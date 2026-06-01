@@ -1,0 +1,52 @@
+const mongoose = require('mongoose');
+
+const lifecycleEventSchema = new mongoose.Schema({
+  eventType:            { type: String, required: true },
+  timestamp:            { type: Date,   required: true },
+  description:          { type: String },
+  associatedLocation:   { type: String },
+  responsibleParty:     { type: String },
+  relatedReference:     { type: String },
+  durationSinceLastEvent: { type: Number },
+});
+
+const deviceSchema = new mongoose.Schema({
+  serialNumber:      { type: String, required: true, unique: true },
+  modelType:         { type: String },
+  purchaseDate:      { type: Date },
+  activationDate:    { type: Date },
+  batchNumber:       { type: String },
+  supplier:          { type: String },
+  cost:              { type: Number },
+  warrantyExpiry:    { type: Date },
+  status:            { type: String, default: 'InStock' },
+  currentLocation:   { type: String },
+  client:            { type: mongoose.Schema.Types.ObjectId, ref: 'Client' },
+  linkedContractIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Contract' }],
+  lifecycleEvents:   [lifecycleEventSchema],
+  repairIncidents:   [{ type: mongoose.Schema.Types.ObjectId, ref: 'RepairIncident' }],
+  createdBy:         { type: String },
+  updatedBy:         { type: String },
+  deletedAt:         { type: Date },
+}, {
+  timestamps: true,
+  toJSON: {
+    transform: (_doc, ret) => {
+      ret.id = ret._id.toString();
+      delete ret._id;
+      delete ret.__v;
+      if (ret.client)            ret.client = ret.client.toString();
+      if (ret.linkedContractIds) ret.linkedContractIds = ret.linkedContractIds.map(id => id.toString());
+      return ret;
+    },
+  },
+});
+
+deviceSchema.index({ serialNumber: 1 });
+deviceSchema.index({ status: 1 });
+deviceSchema.index({ currentLocation: 1 });
+deviceSchema.index({ modelType: 1 });
+deviceSchema.index({ batchNumber: 1 });
+deviceSchema.index({ deletedAt: 1 });  // speeds up deletedAt: null queries
+
+module.exports = mongoose.model('Device', deviceSchema);
