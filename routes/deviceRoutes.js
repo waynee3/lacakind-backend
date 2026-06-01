@@ -1,18 +1,18 @@
-const express = require('express');
-const router  = express.Router();
-const auth    = require('../middleware/auth');
-const c       = require('../controllers/deviceController');
+import { Router } from 'express';
+const router  = Router();
+import auth from '../middleware/auth';
+import { getBulkOperations, getAllBulkOperations, getDeviceBySerialNumber, updateDeviceBySerialNumber, bulkLogLifecycleEvent, getDevices, addDevice, updateDevice, deleteDevice } from '../controllers/deviceController';
 
 // Specific paths before param routes
-router.get('/bulk-operations',     auth, c.getBulkOperations);
-router.get('/all-bulk-operations', auth, c.getAllBulkOperations);
-router.get('/serial/:serialNumber',auth, c.getDeviceBySerialNumber);
-router.put('/serial/:serialNumber',auth, c.updateDeviceBySerialNumber);
-router.post('/bulk-lifecycle',     auth, ...c.bulkLogLifecycleEvent);
+router.get('/bulk-operations',     auth, getBulkOperations);
+router.get('/all-bulk-operations', auth, getAllBulkOperations);
+router.get('/serial/:serialNumber',auth, getDeviceBySerialNumber);
+router.put('/serial/:serialNumber',auth, updateDeviceBySerialNumber);
+router.post('/bulk-lifecycle',     auth, ...bulkLogLifecycleEvent);
 
-router.get('/',    auth, c.getDevices);
-router.post('/',   auth, c.addDevice);
-router.put('/:id', auth, c.updateDevice);
-router.delete('/:id', auth, c.deleteDevice);
+router.get('/',    auth, getDevices);
+router.post('/',   auth, addDevice);
+router.put('/:id', auth, updateDevice);
+router.delete('/:id', auth, deleteDevice);
 
-module.exports = router;
+export default router;

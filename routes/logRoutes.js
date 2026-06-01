@@ -1,11 +1,11 @@
-const express = require('express');
-const router  = express.Router();
-const auth    = require('../middleware/auth');
-const c       = require('../controllers/logController');
+import { Router } from 'express';
+const router  = Router();
+import auth from '../middleware/auth';
+import { addLog, getLogs, updateLog, deleteLog } from '../controllers/logController';
 
-router.post('/:serialNumber', auth, c.addLog);
-router.get('/',               auth, c.getLogs);
-router.put('/',               auth, c.updateLog);
-router.delete('/',            auth, c.deleteLog);
+router.post('/:serialNumber', auth, addLog);
+router.get('/',               auth, getLogs);
+router.put('/',               auth, updateLog);
+router.delete('/',            auth, deleteLog);
 
-module.exports = router;
+export default router;

@@ -1,10 +1,10 @@
-const express = require('express');
-const router  = express.Router();
-const auth    = require('../middleware/auth');
-const c       = require('../controllers/choiceController');
+import { Router } from 'express';
+const router  = Router();
+import auth from '../middleware/auth';
+import { getChoices, addChoice, deleteChoice } from '../controllers/choiceController';
 
-router.get('/',    auth, c.getChoices);
-router.post('/',   auth, c.addChoice);
-router.delete('/:id', auth, c.deleteChoice);
+router.get('/',    auth, getChoices);
+router.post('/',   auth, addChoice);
+router.delete('/:id', auth, deleteChoice);
 
-module.exports = router;
+export default router;

@@ -1,17 +1,17 @@
-const mongoose = require('mongoose');
+import { Schema, model } from 'mongoose';
 
 /**
  * BulkOperation — records every bulk action for auditing.
  * The `details` sub-document captures before/after state so the UI
  * can display a meaningful history without re-querying devices.
  */
-const clientSnapshotSchema = new mongoose.Schema({
+const clientSnapshotSchema = new Schema({
   id:       String,
   name:     String,
   location: String,
 }, { _id: false });
 
-const kioskChangeSchema = new mongoose.Schema({
+const kioskChangeSchema = new Schema({
   serialNumber: String,
   fromStatus:   String,
   toStatus:     String,
@@ -21,7 +21,7 @@ const kioskChangeSchema = new mongoose.Schema({
   toClient:     { id: String, name: String },
 }, { _id: false });
 
-const bulkOperationSchema = new mongoose.Schema({
+const bulkOperationSchema = new Schema({
   bulkOpId: { type: String, required: true, unique: true },
   action:   { type: String, required: true },
 
@@ -68,4 +68,4 @@ const bulkOperationSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
-module.exports = mongoose.model('BulkOperation', bulkOperationSchema);
+export default model('BulkOperation', bulkOperationSchema);

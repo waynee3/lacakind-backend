@@ -1,11 +1,11 @@
-const express = require('express');
-const router  = express.Router();
-const auth    = require('../middleware/auth');
-const c       = require('../controllers/utilityController');
+import { Router } from 'express';
+const router  = Router();
+import auth from '../middleware/auth';
+import { bulkImport, bulkUpdate, getBulkOperations, generateReports } from '../controllers/utilityController';
 
-router.post('/bulk-import',  auth, ...c.bulkImport);
-router.post('/bulk-update',  auth, c.bulkUpdate);
-router.get('/bulk-operations', auth, c.getBulkOperations);
-router.get('/reports',       auth, c.generateReports);
+router.post('/bulk-import',  auth, ...bulkImport);
+router.post('/bulk-update',  auth, bulkUpdate);
+router.get('/bulk-operations', auth, getBulkOperations);
+router.get('/reports',       auth, generateReports);
 
-module.exports = router;
+export default router;

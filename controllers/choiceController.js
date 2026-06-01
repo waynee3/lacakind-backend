@@ -1,8 +1,8 @@
-const Choice   = require('../models/Choice');
-const Client   = require('../models/Client');
-const Contract = require('../models/Contract');
-const Device   = require('../models/Kiosk');
-const { createError } = require('../middleware/errorHandler');
+import { find, create, findById } from '../models/Choice';
+import { find as _find, findById as _findById } from '../models/Client';
+import { find as __find, findById as __findById } from '../models/Contract';
+import { findOne } from '../models/Kiosk';
+const { createError }     = require('../middleware/errorHandler').default;
 
 // GET /choices?type=...
 const getChoices = async (req, res, next) => {
@@ -11,7 +11,7 @@ const getChoices = async (req, res, next) => {
     if (!type) return next(createError(400, 'type query parameter is required'));
 
     if (type === 'client') {
-      const clients = await Client.find().lean();
+      const clients = await _find().lean();
       return res.json(clients.map(c => ({
         _id:       c._id,
         type:      'client',
@@ -23,7 +23,7 @@ const getChoices = async (req, res, next) => {
     }
 
     if (type === 'contract') {
-      const contracts = await Contract.find().lean();
+      const contracts = await __find().lean();
       return res.json(contracts.map(c => ({
         _id:       c._id,
         type:      'contract',
@@ -34,7 +34,7 @@ const getChoices = async (req, res, next) => {
       })));
     }
 
-    const choices = await Choice.find({ type }).lean();
+    const choices = await find({ type }).lean();
     res.json(choices.map(ch => ({
       _id:       ch._id,
       type:      ch.type,
@@ -64,7 +64,7 @@ const addChoice = async (req, res, next) => {
       return next(createError(400, 'Clients must be added via the /clients endpoint'));
     }
 
-    const choice = await Choice.create({ type, value: value || name, name });
+    const choice = await create({ type, value: value || name, name });
     res.status(201).json(choice);
   } catch (err) {
     next(err);
@@ -78,26 +78,26 @@ const deleteChoice = async (req, res, next) => {
     if (!type) return next(createError(400, 'type query parameter is required'));
 
     if (type === 'client') {
-      const client = await Client.findById(req.params.id);
+      const client = await _findById(req.params.id);
       if (!client) return next(createError(404, 'Client not found'));
-      const inUse = await Device.findOne({ client: client._id });
+      const inUse = await findOne({ client: client._id });
       if (inUse) return next(createError(409, 'Client is referenced by one or more devices'));
       await client.deleteOne();
       return res.json({ message: 'Client deleted' });
     }
 
     if (type === 'contract') {
-      const contract = await Contract.findById(req.params.id);
+      const contract = await __findById(req.params.id);
       if (!contract) return next(createError(404, 'Contract not found'));
-      const inUse = await Device.findOne({ linkedContractIds: contract._id });
+      const inUse = await findOne({ linkedContractIds: contract._id });
       if (inUse) return next(createError(409, 'Contract is referenced by one or more devices'));
       await contract.deleteOne();
       return res.json({ message: 'Contract deleted' });
     }
 
-    const choice = await Choice.findById(req.params.id);
+    const choice = await findById(req.params.id);
     if (!choice) return next(createError(404, 'Choice not found'));
-    const inUse = await Device.findOne(
+    const inUse = await findOne(
       choice.type === 'status' ? { status: choice.value } : { modelType: choice.value }
     );
     if (inUse) return next(createError(409, 'Choice is in use by one or more devices'));
@@ -108,4 +108,4 @@ const deleteChoice = async (req, res, next) => {
   }
 };
 
-module.exports = { getChoices, addChoice, deleteChoice };
+export default { getChoices, addChoice, deleteChoice };

@@ -1,9 +1,9 @@
-const mongoose = require('mongoose');
+import { Schema, model } from 'mongoose';
 
-const contractSchema = new mongoose.Schema({
+const contractSchema = new Schema({
   contractId:  { type: String, required: true, unique: true },
   contractRef: { type: String, required: true, unique: true },
-  clientId:    { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
+  clientId:    { type: Schema.Types.ObjectId, ref: 'Client', required: true },
   clientName:  { type: String },
   contractType:{ type: String, enum: ['Rental', 'Lease', 'Sale'], required: true },
   startDate:   { type: Date, required: true },
@@ -43,4 +43,4 @@ contractSchema.pre('save', function (next) {
   next();
 });
 
-module.exports = mongoose.model('Contract', contractSchema);
+export default model('Contract', contractSchema);

@@ -1,11 +1,11 @@
-const express = require('express');
-const router  = express.Router();
-const auth    = require('../middleware/auth');
-const c       = require('../controllers/repairController');
+import { Router } from 'express';
+const router  = Router();
+import auth from '../middleware/auth';
+import { createRepairIncident, getRepairIncidents, updateRepairIncident, deploySpareUnit } from '../controllers/repairController';
 
-router.post('/',          auth, c.createRepairIncident);
-router.get('/',           auth, c.getRepairIncidents);
-router.put('/:id',        auth, c.updateRepairIncident);
-router.post('/:id/spare', auth, c.deploySpareUnit);
+router.post('/',          auth, createRepairIncident);
+router.get('/',           auth, getRepairIncidents);
+router.put('/:id',        auth, updateRepairIncident);
+router.post('/:id/spare', auth, deploySpareUnit);
 
-module.exports = router;
+export default router;

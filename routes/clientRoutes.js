@@ -1,15 +1,15 @@
-const express = require('express');
-const router  = express.Router();
-const auth    = require('../middleware/auth');
-const c       = require('../controllers/clientController');
+import { Router } from 'express';
+const router  = Router();
+import auth from '../middleware/auth';
+import { getClientNames, getUniqueLocations, getGeocodedAddress, getClients, addClient, getClientById } from '../controllers/clientController';
 
 // NOTE: specific paths MUST come before /:id to avoid being swallowed by the param route
-router.get('/client-names',      auth, c.getClientNames);
-router.get('/unique-locations',  auth, c.getUniqueLocations);
-router.get('/geocode',           auth, c.getGeocodedAddress);
+router.get('/client-names',      auth, getClientNames);
+router.get('/unique-locations',  auth, getUniqueLocations);
+router.get('/geocode',           auth, getGeocodedAddress);
 
-router.get('/',    auth, c.getClients);
-router.post('/',   auth, c.addClient);
-router.get('/:id', auth, c.getClientById);
+router.get('/',    auth, getClients);
+router.post('/',   auth, addClient);
+router.get('/:id', auth, getClientById);
 
-module.exports = router;
+export default router;

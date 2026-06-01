@@ -1,6 +1,6 @@
-const mongoose = require('mongoose');
+import { Schema, model } from 'mongoose';
 
-const lifecycleEventSchema = new mongoose.Schema({
+const lifecycleEventSchema = new Schema({
   eventType:            { type: String, required: true },
   timestamp:            { type: Date,   required: true },
   description:          { type: String },
@@ -10,7 +10,7 @@ const lifecycleEventSchema = new mongoose.Schema({
   durationSinceLastEvent: { type: Number },
 });
 
-const deviceSchema = new mongoose.Schema({
+const deviceSchema = new Schema({
   serialNumber:      { type: String, required: true, unique: true },
   modelType:         { type: String },
   purchaseDate:      { type: Date },
@@ -21,10 +21,10 @@ const deviceSchema = new mongoose.Schema({
   warrantyExpiry:    { type: Date },
   status:            { type: String, default: 'InStock' },
   currentLocation:   { type: String },
-  client:            { type: mongoose.Schema.Types.ObjectId, ref: 'Client' },
-  linkedContractIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Contract' }],
+  client:            { type: Schema.Types.ObjectId, ref: 'Client' },
+  linkedContractIds: [{ type: Schema.Types.ObjectId, ref: 'Contract' }],
   lifecycleEvents:   [lifecycleEventSchema],
-  repairIncidents:   [{ type: mongoose.Schema.Types.ObjectId, ref: 'RepairIncident' }],
+  repairIncidents:   [{ type: Schema.Types.ObjectId, ref: 'RepairIncident' }],
   createdBy:         { type: String },
   updatedBy:         { type: String },
   deletedAt:         { type: Date },
@@ -49,4 +49,4 @@ deviceSchema.index({ modelType: 1 });
 deviceSchema.index({ batchNumber: 1 });
 deviceSchema.index({ deletedAt: 1 });  // speeds up deletedAt: null queries
 
-module.exports = mongoose.model('Device', deviceSchema);
+export default model('Device', deviceSchema);

@@ -1,13 +1,13 @@
-const RepairIncident  = require('../models/RepairIncident');
-const Device          = require('../models/Kiosk');
-const { createError } = require('../middleware/errorHandler');
+import { create, find, findOneAndUpdate } from '../models/RepairIncident';
+import { findOne } from '../models/Kiosk';
+const { createError }     = require('../middleware/errorHandler').default;
 
 // POST /repairs
 const createRepairIncident = async (req, res, next) => {
   try {
-    const incident = await RepairIncident.create(req.body);
+    const incident = await create(req.body);
 
-    const kiosk = await Device.findOne({ serialNumber: incident.kioskSerial });
+    const kiosk = await findOne({ serialNumber: incident.kioskSerial });
     if (kiosk) {
       kiosk.repairIncidents.push(incident._id);
       await kiosk.save();
@@ -22,7 +22,7 @@ const createRepairIncident = async (req, res, next) => {
 // GET /repairs
 const getRepairIncidents = async (req, res, next) => {
   try {
-    const incidents = await RepairIncident.find();
+    const incidents = await find();
     res.json(incidents);
   } catch (err) {
     next(err);
@@ -32,7 +32,7 @@ const getRepairIncidents = async (req, res, next) => {
 // PUT /repairs/:id
 const updateRepairIncident = async (req, res, next) => {
   try {
-    const incident = await RepairIncident.findOneAndUpdate(
+    const incident = await findOneAndUpdate(
       { id: req.params.id },
       req.body,
       { new: true, runValidators: true }
@@ -47,7 +47,7 @@ const updateRepairIncident = async (req, res, next) => {
 // POST /repairs/:id/spare
 const deploySpareUnit = async (req, res, next) => {
   try {
-    const incident = await RepairIncident.findOneAndUpdate(
+    const incident = await findOneAndUpdate(
       { id: req.params.id },
       req.body,
       { new: true, runValidators: true }
@@ -59,4 +59,4 @@ const deploySpareUnit = async (req, res, next) => {
   }
 };
 
-module.exports = { createRepairIncident, getRepairIncidents, updateRepairIncident, deploySpareUnit };
+export default { createRepairIncident, getRepairIncidents, updateRepairIncident, deploySpareUnit };

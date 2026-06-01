@@ -43,4 +43,4 @@ const createError = (status, message) => {
   return err;
 };
 
-module.exports = { errorHandler, createError };
+export default { errorHandler, createError };

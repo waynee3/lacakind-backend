@@ -1,6 +1,6 @@
-const mongoose = require('mongoose');
+import { Schema, model } from 'mongoose';
 
-const repairIncidentSchema = new mongoose.Schema({
+const repairIncidentSchema = new Schema({
   id:                   { type: String, required: true, unique: true },
   kioskSerial:          { type: String, required: true },
   issueType:            { type: String, required: true },
@@ -23,4 +23,4 @@ const repairIncidentSchema = new mongoose.Schema({
   spareNote:            { type: String },
 }, { timestamps: true });
 
-module.exports = mongoose.model('RepairIncident', repairIncidentSchema);
+export default model('RepairIncident', repairIncidentSchema);

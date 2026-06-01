@@ -1,12 +1,12 @@
-const fs       = require('fs');
-const mongoose = require('mongoose');
-const multer   = require('multer');
-const csv      = require('csv-parser');
-const Device   = require('../models/Kiosk');
-const Client   = require('../models/Client');
-const BulkOperation = require('../models/BulkOperation');
-const { withTransaction } = require('../utils/withTransaction');
-const { createError }     = require('../middleware/errorHandler');
+import { readFileSync, writeFileSync, unlinkSync, existsSync, createReadStream } from 'fs';
+import { Types } from 'mongoose';
+import multer from 'multer';
+import csv from 'csv-parser';
+import { findOne, insertMany, updateMany, find } from '../models/Kiosk';
+import { findOne as _findOne } from '../models/Client';
+import { create, find as _find, countDocuments } from '../models/BulkOperation';
+import { withTransaction } from '../utils/withTransaction';
+const { createError }     = require('../middleware/errorHandler').default;
 
 const upload = multer({ dest: 'uploads/' });
 
@@ -45,11 +45,11 @@ const bulkImport = [
 
     try {
       // Pre-clean the CSV
-      let content = fs.readFileSync(filePath, 'utf8');
+      let content = readFileSync(filePath, 'utf8');
       content = content.replace(/;+(\r?\n|$)/g, '$1');
       content = content.split(/\r?\n/).filter(l => l.trim()).join('\n');
       content = content.replace(/ SN/g, '\nSN');
-      fs.writeFileSync(filePath, content);
+      writeFileSync(filePath, content);
 
       // Parse CSV into memory first — safe to do async resolution after
       const { rows, parseErrors } = await parseCSV(filePath);
@@ -65,12 +65,12 @@ const bulkImport = [
         const missing = ['serialNumber', 'modelType', 'currentLocation'].filter(f => !row[f]);
         if (missing.length) { rowErrors.push(`Row ${rowNumber}: Missing ${missing.join(', ')}`); continue; }
 
-        const duplicate = await Device.findOne({ serialNumber: { $regex: `^${row.serialNumber}$`, $options: 'i' }, deletedAt: null });
+        const duplicate = await findOne({ serialNumber: { $regex: `^${row.serialNumber}$`, $options: 'i' }, deletedAt: null });
         if (duplicate) { rowErrors.push(`Row ${rowNumber}: Serial ${row.serialNumber} already exists`); continue; }
 
         let clientId = null;
         if (row.client && row.client !== 'N/A') {
-          const client = await Client.findOne({ name: row.client });
+          const client = await _findOne({ name: row.client });
           if (!client) { rowErrors.push(`Row ${rowNumber}: Client "${row.client}" not found`); continue; }
           clientId = client._id;
         }
@@ -122,20 +122,20 @@ const bulkImport = [
       }
 
       if (!devices.length) {
-        fs.unlinkSync(filePath);
+        unlinkSync(filePath);
         return res.status(400).json({ errors: rowErrors });
       }
 
       // Now safe to use a transaction — all async work is done
       const inserted = await withTransaction(async (session) => {
-        return Device.insertMany(devices, { session });
+        return insertMany(devices, { session });
       });
 
-      fs.unlinkSync(filePath);
+      unlinkSync(filePath);
 
       // Save audit record
       try {
-        await BulkOperation.create({
+        await create({
           bulkOpId:         `import-${Date.now()}`,
           action:           'bulk_import',
           affectedKiosks:   inserted.map(d => d.serialNumber),
@@ -158,7 +158,7 @@ const bulkImport = [
         errors:           rowErrors.length ? rowErrors : null,
       });
     } catch (err) {
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      if (existsSync(filePath)) unlinkSync(filePath);
       next(err);
     }
   },
@@ -173,10 +173,10 @@ const bulkUpdate = async (req, res, next) => {
     if (!Array.isArray(deviceIds) || !deviceIds.length) return next(createError(400, 'deviceIds must be a non-empty array'));
     if (!updates || !Object.keys(updates).length)       return next(createError(400, 'updates must be a non-empty object'));
 
-    const invalidIds = deviceIds.filter(id => !mongoose.Types.ObjectId.isValid(id));
+    const invalidIds = deviceIds.filter(id => !Types.ObjectId.isValid(id));
     if (invalidIds.length) return next(createError(400, `Invalid device IDs: ${invalidIds.join(', ')}`));
 
-    const result = await Device.updateMany(
+    const result = await updateMany(
       { _id: { $in: deviceIds } },
       { ...updates, updatedAt: new Date(), updatedBy: req.user.uid }
     );
@@ -194,7 +194,7 @@ const generateReports = async (req, res, next) => {
     const { type, startDate, endDate } = req.query;
     if (type !== 'maintenance') return next(createError(400, `Unsupported report type: ${type}`));
 
-    const devices = await Device.find({
+    const devices = await find({
       'lifecycleEvents.eventType':   'maintenancestart',
       'lifecycleEvents.timestamp':   { $gte: new Date(startDate), $lte: new Date(endDate) },
     });
@@ -220,8 +220,8 @@ const getBulkOperations = async (req, res, next) => {
 
     const skip  = (parseInt(page) - 1) * parseInt(limit);
     const [ops, total] = await Promise.all([
-      BulkOperation.find(query).sort({ timestamp: -1 }).skip(skip).limit(parseInt(limit)).lean(),
-      BulkOperation.countDocuments(query),
+      _find(query).sort({ timestamp: -1 }).skip(skip).limit(parseInt(limit)).lean(),
+      countDocuments(query),
     ]);
 
     res.json({ bulkOperations: ops, total, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(total / parseInt(limit)) });
@@ -260,8 +260,8 @@ function parseCSV(filePath) {
     parser.on('end',   () => resolve({ rows, parseErrors: errors }));
     parser.on('error', reject);
 
-    fs.createReadStream(filePath).pipe(parser);
+    createReadStream(filePath).pipe(parser);
   });
 }
 
-module.exports = { bulkImport, bulkUpdate, generateReports, getBulkOperations };
+export default { bulkImport, bulkUpdate, generateReports, getBulkOperations };
