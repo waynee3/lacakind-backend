@@ -1,6 +1,6 @@
 import { create, find, findOneAndUpdate } from '../models/RepairIncident';
 import { findOne } from '../models/Device';
-const { createError }     = require('../middleware/errorHandler').default;
+import { createError } from '../middleware/errorHandler.js';
 
 // POST /repairs
 const createRepairIncident = async (req, res, next) => {

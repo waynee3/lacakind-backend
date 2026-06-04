@@ -1,7 +1,7 @@
 const escapeRegex = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 import { get } from 'axios';
 import { find, create, distinct, findById } from '../models/Client';
-const { createError }     = require('../middleware/errorHandler').default;
+import { createError } from '../middleware/errorHandler.js';
 
 // GET /clients
 const getClients = async (req, res, next) => {

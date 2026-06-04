@@ -3,7 +3,7 @@ import { find, findById, create, findByIdAndUpdate, updateOne } from '../models/
 import { find as _find, updateMany } from '../models/Device';
 import { findById as _findById } from '../models/Client';
 import { withTransaction } from '../utils/withTransaction';
-const { createError }     = require('../middleware/errorHandler').default;
+import { createError } from '../middleware/errorHandler.js';
 
 
 // GET /contracts

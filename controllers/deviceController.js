@@ -7,7 +7,7 @@ import Client from '../models/Client';
 import { create as _create, find as _find, countDocuments } from '../models/BulkOperation';
 import { normaliseEventType, resolveEventOutcome } from '../config/eventRules';
 import { withTransaction } from '../utils/withTransaction';
-const { createError }     = require('../middleware/errorHandler').default;
+import { createError } from '../middleware/errorHandler.js';
 
 // ─── POST /devices ────────────────────────────────────────────────────────────
 

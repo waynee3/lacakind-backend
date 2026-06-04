@@ -6,7 +6,7 @@ import { findOne, insertMany, updateMany, find } from '../models/Device';
 import { findOne as _findOne } from '../models/Client';
 import { create, find as _find, countDocuments } from '../models/BulkOperation';
 import { withTransaction } from '../utils/withTransaction';
-const { createError }     = require('../middleware/errorHandler').default;
+import { createError } from '../middleware/errorHandler.js';
 
 const upload = multer({ dest: 'uploads/' });
 
@@ -178,7 +178,7 @@ const bulkUpdate = async (req, res, next) => {
 
     const result = await updateMany(
       { _id: { $in: deviceIds } },
-      { ...updates, updatedAt: new Date(), updatedBy: req.user.uid }
+      { ...updates, updatedAt: new Date(), updatedBy: req.user.email }
     );
 
     res.json({ message: 'Bulk update successful', matchedCount: result.matchedCount, modifiedCount: result.modifiedCount });

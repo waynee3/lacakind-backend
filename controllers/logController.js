@@ -1,7 +1,7 @@
 import { body, validationResult } from 'express-validator';
 import { findOne, findById } from '../models/Device';
 import { normaliseEventType, resolveEventOutcome } from '../config/eventRules';
-const { createError }     = require('../middleware/errorHandler').default;
+import { createError } from '../middleware/errorHandler.js';
 
 // POST /logs/:serialNumber
 const addLog = [
@@ -41,7 +41,7 @@ const addLog = [
       device.status          = newStatus;
       device.currentLocation = newLocation;
       device.updatedAt       = new Date();
-      device.updatedBy       = req.user.uid;
+      device.updatedBy       = req.user.email;
 
       await device.save();
       res.status(201).json(newLog);
@@ -82,7 +82,7 @@ const updateLog = async (req, res, next) => {
 
     Object.assign(device.lifecycleEvents[index], req.body);
     device.updatedAt = new Date();
-    device.updatedBy = req.user.uid;
+    device.updatedBy = req.user.email;
     await device.save();
 
     res.json(device.lifecycleEvents[index]);
@@ -107,7 +107,7 @@ const deleteLog = async (req, res, next) => {
 
     device.lifecycleEvents.splice(index, 1);
     device.updatedAt = new Date();
-    device.updatedBy = req.user.uid;
+    device.updatedBy = req.user.email;
     await device.save();
 
     res.json({ message: 'Log entry deleted' });
