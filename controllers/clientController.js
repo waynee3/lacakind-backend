@@ -1,3 +1,4 @@
+const escapeRegex = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 import { get } from 'axios';
 import { find, create, distinct, findById } from '../models/Client';
 const { createError }     = require('../middleware/errorHandler').default;
@@ -8,7 +9,7 @@ const getClients = async (req, res, next) => {
     const { search, location, limit } = req.query;
     const query = {};
 
-    if (search)                    query.name     = { $regex: search, $options: 'i' };
+    if (search) query.name = { $regex: escapeRegex(search), $options: 'i' };
     if (location && location !== 'All') query.location = location;
 
     const parsedLimit = parseInt(limit) || 0;

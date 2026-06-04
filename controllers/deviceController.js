@@ -1,3 +1,4 @@
+const escapeRegex = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 import { Types } from 'mongoose';
 import { body, validationResult } from 'express-validator';
 import { create, find, findOne, findByIdAndUpdate, updateOne, updateMany } from '../models/Kiosk';
@@ -33,7 +34,7 @@ const getDevices = async (req, res, next) => {
     const { serialNumber, modelType, batchNumber, status, location, clientFilter, contractFilter, page = 1, limit } = req.query;
     const query = { deletedAt: null };
 
-    if (serialNumber)   query.serialNumber   = { $regex: serialNumber, $options: 'i' };
+    if (serialNumber) query.serialNumber = { $regex: escapeRegex(serialNumber), $options: 'i' };
     if (modelType)      query.modelType      = modelType;
     if (batchNumber)    query.batchNumber    = batchNumber;
     if (status)         query.status         = status;

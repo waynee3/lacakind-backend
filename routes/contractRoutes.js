@@ -5,7 +5,7 @@ import { getContracts, addContract, updateKiosksForContract, getContractById, up
 
 router.get('/',                  auth, getContracts);
 router.post('/',                 auth, addContract);
-router.post('/update-kiosks',        updateKiosksForContract); // internal, no auth per original
+router.post('/update-kiosks', auth, c.updateKiosksForContract);
 router.get('/:id',               auth, getContractById);
 router.put('/:id',               auth, updateContract);
 router.put('/:id/terminate',     auth, terminateContract);
