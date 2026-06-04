@@ -1,5 +1,5 @@
 import { create, find, findOneAndUpdate } from '../models/RepairIncident';
-import { findOne } from '../models/Kiosk';
+import { findOne } from '../models/Device';
 const { createError }     = require('../middleware/errorHandler').default;
 
 // POST /repairs
@@ -7,10 +7,10 @@ const createRepairIncident = async (req, res, next) => {
   try {
     const incident = await create(req.body);
 
-    const kiosk = await findOne({ serialNumber: incident.kioskSerial });
-    if (kiosk) {
-      kiosk.repairIncidents.push(incident._id);
-      await kiosk.save();
+    const device = await findOne({ serialNumber: incident.deviceSerial });
+    if (device) {
+      device.repairIncidents.push(incident._id);
+      await device.save();
     }
 
     res.status(201).json(incident);

@@ -11,7 +11,7 @@ const clientSnapshotSchema = new Schema({
   location: String,
 }, { _id: false });
 
-const kioskChangeSchema = new Schema({
+const deviceChangeSchema = new Schema({
   serialNumber: String,
   fromStatus:   String,
   toStatus:     String,
@@ -25,7 +25,7 @@ const bulkOperationSchema = new Schema({
   bulkOpId: { type: String, required: true, unique: true },
   action:   { type: String, required: true },
 
-  affectedKiosks: [{ type: String, required: true }],
+  affectedDevices: [{ type: String, required: true }],
 
   createdBy:   { type: String, required: true },
   timestamp:   { type: Date,   required: true, default: Date.now },
@@ -42,7 +42,7 @@ const bulkOperationSchema = new Schema({
 
   details: {
     // swap-deployment specifics
-    originalKiosk: {
+    originalDevice: {
       serialNumber:    String,
       previousStatus:  String,
       previousLocation:String,
@@ -50,7 +50,7 @@ const bulkOperationSchema = new Schema({
       newStatus:       String,
       newLocation:     String,
     },
-    spareKiosk: {
+    spareDevice: {
       serialNumber:    String,
       previousStatus:  String,
       previousLocation:String,
@@ -62,9 +62,9 @@ const bulkOperationSchema = new Schema({
     client:   clientSnapshotSchema,
     contract: { id: String, contractId: String, clientName: String },
     // general change arrays
-    statusChanges:   [kioskChangeSchema],
-    locationChanges: [kioskChangeSchema],
-    clientChanges:   [kioskChangeSchema],
+    statusChanges:   [deviceChangeSchema],
+    locationChanges: [deviceChangeSchema],
+    clientChanges:   [deviceChangeSchema],
   },
 }, { timestamps: true });
 

@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 import { find, findById, create, findByIdAndUpdate, updateOne } from '../models/Contract';
-import { find as _find, updateMany } from '../models/Kiosk';
+import { find as _find, updateMany } from '../models/Device';
 import { findById as _findById } from '../models/Client';
 import { withTransaction } from '../utils/withTransaction';
 const { createError }     = require('../middleware/errorHandler').default;
@@ -36,11 +36,11 @@ const addContract = async (req, res, next) => {
       paymentStatus: req.body.paymentStatus || 'Not Paid',
     });
 
-    // Auto-link kiosks belonging to this client
+    // Auto-link devices belonging to this client
     if (contract.clientId) {
-      const kiosks  = await _find({ client: contract.clientId, deletedAt: null });
-      const serials = kiosks.map(k => k.serialNumber);
-      contract.kioskSerials = serials;
+      const devices  = await _find({ client: contract.clientId, deletedAt: null });
+      const serials = devices.map(k => k.serialNumber);
+      contract.deviceSerials = serials;
       await contract.save();
       await updateMany(
         { serialNumber: { $in: serials } },
@@ -60,14 +60,14 @@ const updateContract = async (req, res, next) => {
     const existing = await findById(req.params.id);
     if (!existing) return next(createError(404, 'Contract not found'));
 
-    const prevSerials = existing.kioskSerials || [];
+    const prevSerials = existing.deviceSerials || [];
     const updated     = await findByIdAndUpdate(
       req.params.id,
       { $set: { ...req.body, paymentStatus: req.body.paymentStatus || existing.paymentStatus } },
       { new: true, runValidators: true }
     );
 
-    const newSerials     = updated.kioskSerials || [];
+    const newSerials     = updated.deviceSerials || [];
     const removedSerials = prevSerials.filter(s => !newSerials.includes(s));
     const addedSerials   = newSerials.filter(s => !prevSerials.includes(s));
 
@@ -93,9 +93,9 @@ const terminateContract = async (req, res, next) => {
     contract.status = 'Terminated';
     await contract.save();
 
-    if (contract.kioskSerials.length) {
+    if (contract.deviceSerials.length) {
       await updateMany(
-        { serialNumber: { $in: contract.kioskSerials } },
+        { serialNumber: { $in: contract.deviceSerials } },
         { $pull: { linkedContractIds: contract._id } }
       );
     }
@@ -125,14 +125,14 @@ const bulkUploadDocuments = async (req, res, next) => {
   }
 };
 
-// POST /contracts/update-kiosks
-const updateKiosksForContract = async (req, res, next) => {
+// POST /contracts/update-devices
+const updateDevicesForContract = async (req, res, next) => {
   try {
-    const { contractId, clientId, kioskSerials } = req.body;
+    const { contractId, clientId, deviceSerials } = req.body;
 
     if (!Types.ObjectId.isValid(contractId)) return next(createError(400, `Invalid contractId: ${contractId}`));
     if (!Types.ObjectId.isValid(clientId))   return next(createError(400, `Invalid clientId: ${clientId}`));
-    if (!Array.isArray(kioskSerials))                  return next(createError(400, 'kioskSerials must be an array'));
+    if (!Array.isArray(deviceSerials))                  return next(createError(400, 'deviceSerials must be an array'));
 
     await withTransaction(async (session) => {
       const [contract, client] = await Promise.all([
@@ -142,18 +142,18 @@ const updateKiosksForContract = async (req, res, next) => {
       if (!contract) throw createError(404, 'Contract not found');
       if (!client)   throw createError(404, 'Client not found');
 
-      if (kioskSerials.length) {
-        const kiosks = await _find({ serialNumber: { $in: kioskSerials }, deletedAt: null }).session(session);
-        const missing = kioskSerials.filter(sn => !kiosks.some(k => k.serialNumber === sn));
-        if (missing.length) throw createError(400, `Kiosks not found: ${missing.join(', ')}`);
+      if (deviceSerials.length) {
+        const devices = await _find({ serialNumber: { $in: deviceSerials }, deletedAt: null }).session(session);
+        const missing = deviceSerials.filter(sn => !devices.some(d => d.serialNumber === sn));
+        if (missing.length) throw createError(400, `Devices not found: ${missing.join(', ')}`);
 
-        const wrongClient = kiosks.filter(k => k.client && k.client.toString() !== clientId);
+        const wrongClient = devices.filter(d => d.client && d.client.toString() !== clientId);
         if (wrongClient.length) {
-          throw createError(400, `Kiosks belong to a different client: ${wrongClient.map(k => k.serialNumber).join(', ')}`);
+          throw createError(400, `Devices belong to a different client: ${wrongClient.map(d => d.serialNumber).join(', ')}`);
         }
 
         await updateMany(
-          { serialNumber: { $in: kioskSerials }, deletedAt: null },
+          { serialNumber: { $in: deviceSerials }, deletedAt: null },
           {
             $set: { client: new Types.ObjectId(clientId), status: 'Deployed', updatedBy: 'system', updatedAt: new Date() },
             $addToSet: { linkedContractIds: new Types.ObjectId(contractId) },
@@ -162,10 +162,10 @@ const updateKiosksForContract = async (req, res, next) => {
         );
       }
 
-      await updateOne({ _id: contractId }, { $set: { kioskSerials } }, { session });
+      await updateOne({ _id: contractId }, { $set: { deviceSerials } }, { session });
     });
 
-    res.json({ message: `Updated ${kioskSerials.length} kiosks for contract ${contractId}` });
+    res.json({ message: `Updated ${deviceSerials.length} devices for contract ${contractId}` });
   } catch (err) {
     next(err);
   }
@@ -183,4 +183,4 @@ function formatContract(contract) {
   };
 }
 
-export default { getContracts, getContractById, addContract, updateContract, terminateContract, bulkUploadDocuments, updateKiosksForContract };
+export default { getContracts, getContractById, addContract, updateContract, terminateContract, bulkUploadDocuments, updateDevicesForContract };

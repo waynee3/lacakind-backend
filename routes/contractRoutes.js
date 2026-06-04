@@ -1,11 +1,11 @@
 import { Router } from 'express';
 const router  = Router();
 import auth from '../middleware/auth';
-import { getContracts, addContract, updateKiosksForContract, getContractById, updateContract, terminateContract, bulkUploadDocuments } from '../controllers/contractController';
+import { getContracts, addContract, updateDevicesForContract, getContractById, updateContract, terminateContract, bulkUploadDocuments } from '../controllers/contractController';
 
 router.get('/',                  auth, getContracts);
 router.post('/',                 auth, addContract);
-router.post('/update-kiosks', auth, c.updateKiosksForContract);
+router.post('/update-devices', auth, updateDevicesForContract);
 router.get('/:id',               auth, getContractById);
 router.put('/:id',               auth, updateContract);
 router.put('/:id/terminate',     auth, terminateContract);

@@ -1,5 +1,5 @@
 import { body, validationResult } from 'express-validator';
-import { findOne, findById } from '../models/Kiosk';
+import { findOne, findById } from '../models/Device';
 import { normaliseEventType, resolveEventOutcome } from '../config/eventRules';
 const { createError }     = require('../middleware/errorHandler').default;
 

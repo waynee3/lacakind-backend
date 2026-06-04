@@ -1,7 +1,7 @@
 import { find, create, findById } from '../models/Choice';
 import { find as _find, findById as _findById } from '../models/Client';
 import { find as __find, findById as __findById } from '../models/Contract';
-import { findOne } from '../models/Kiosk';
+import { findOne } from '../models/Device';
 const { createError }     = require('../middleware/errorHandler').default;
 
 // GET /choices?type=...

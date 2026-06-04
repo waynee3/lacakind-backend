@@ -2,7 +2,7 @@ import { Schema, model } from 'mongoose';
 
 const repairIncidentSchema = new Schema({
   id:                   { type: String, required: true, unique: true },
-  kioskSerial:          { type: String, required: true },
+  deviceSerial:         { type: String, required: true },
   issueType:            { type: String, required: true },
   issueSummary:         { type: String, required: true },
   dateReported:         { type: Date,   required: true },

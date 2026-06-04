@@ -8,7 +8,7 @@ const contractSchema = new Schema({
   contractType:{ type: String, enum: ['Rental', 'Lease', 'Sale'], required: true },
   startDate:   { type: Date, required: true },
   endDate:     { type: Date },
-  kioskSerials:[{ type: String }],
+  deviceSerials:[{ type: String }],
   sla: {
     uptimeGuarantee: { type: String, default: '99%' },
     repairTimeLimit: { type: String, default: '48h' },

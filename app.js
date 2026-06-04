@@ -1,16 +1,19 @@
+require('dotenv').config();          // ← add this as line 1
 const express  = require('express');
 const mongoose = require('mongoose');
+const cors     = require('cors');    // ← add this
 const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
 app.use(cors({
-  origin: '*', 
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json());
 
 // ── Routes ──────────────────────────────────────────────────────────────────
+app.use('/api/auth',       require('./routes/authRoutes')); 
 app.use('/api/clients',    require('./routes/clientRoutes'));
 app.use('/api/contracts',  require('./routes/contractRoutes'));
 app.use('/api/choices',    require('./routes/choiceRoutes'));
@@ -23,8 +26,8 @@ app.use('/api/utilities',  require('./routes/utilityRoutes'));
 app.use(errorHandler);
 
 // ── DB + server ──────────────────────────────────────────────────────────────
-const PORT    = process.env.PORT    || 3000;
-const MONGO   = process.env.MONGODB_URI || 'mongodb://localhost:27017/kiosk';
+const PORT  = process.env.PORT       || 3000;
+const MONGO = process.env.MONGODB_URI || 'mongodb://localhost:27017/device';
 
 mongoose.connect(MONGO)
   .then(() => {

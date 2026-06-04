@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, unlinkSync, existsSync, createReadStream }
 import { Types } from 'mongoose';
 import multer from 'multer';
 import csv from 'csv-parser';
-import { findOne, insertMany, updateMany, find } from '../models/Kiosk';
+import { findOne, insertMany, updateMany, find } from '../models/Device';
 import { findOne as _findOne } from '../models/Client';
 import { create, find as _find, countDocuments } from '../models/BulkOperation';
 import { withTransaction } from '../utils/withTransaction';
@@ -138,7 +138,7 @@ const bulkImport = [
         await create({
           bulkOpId:         `import-${Date.now()}`,
           action:           'bulk_import',
-          affectedKiosks:   inserted.map(d => d.serialNumber),
+          affectedDevices:   inserted.map(d => d.serialNumber),
           createdBy:        req.user?.uid || 'anonymous',
           timestamp:        new Date(),
           totalRecords:     rows.length,

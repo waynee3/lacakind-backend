@@ -1,7 +1,7 @@
 const escapeRegex = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 import { Types } from 'mongoose';
 import { body, validationResult } from 'express-validator';
-import { create, find, findOne, findByIdAndUpdate, updateOne, updateMany } from '../models/Kiosk';
+import { create, find, findOne, findByIdAndUpdate, updateOne, updateMany } from '../models/Device';
 import { findOne as _findOne, findById, updateOne as _updateOne } from '../models/Contract';
 import Client from '../models/Client';
 import { create as _create, find as _find, countDocuments } from '../models/BulkOperation';
@@ -156,20 +156,20 @@ const bulkLogLifecycleEvent = [
       if (!op) return next(createError(400, 'Missing bulkOperation in request body'));
 
       const {
-        bulkOpId, action, associatedLocation, affectedKiosks,
+        bulkOpId, action, associatedLocation, affectedDevices,
         createdBy, timestamp, description, relatedReference,
         contractId, clientId, status,
         spareCloneData, originalUpdate,
       } = op;
 
-      if (!bulkOpId || !action || !Array.isArray(affectedKiosks) || !createdBy || !timestamp) {
-        return next(createError(400, 'Missing required fields: bulkOpId, action, affectedKiosks, createdBy, timestamp'));
+      if (!bulkOpId || !action || !Array.isArray(affectedDevices) || !createdBy || !timestamp) {
+        return next(createError(400, 'Missing required fields: bulkOpId, action, affectedDevices, createdBy, timestamp'));
       }
 
       const actionKey = normaliseEventType(action);
       if (!actionKey) return next(createError(400, `Unknown action: ${action}`));
 
-      const updatedKiosks = await withTransaction(async (session) => {
+      const updatedDevices = await withTransaction(async (session) => {
         // Resolve contract
         let contractIdObj = null;
         if (contractId && contractId !== 'undefined') {
@@ -203,10 +203,10 @@ const bulkLogLifecycleEvent = [
           linkedContractIds = [contractIdObj];
         }
 
-        // Fetch all affected kiosks
-        const kiosks = await find({ serialNumber: { $in: affectedKiosks }, deletedAt: null }).session(session);
-        const missing = affectedKiosks.filter(sn => !kiosks.some(k => k.serialNumber === sn));
-        if (missing.length) throw createError(404, `Kiosks not found: ${missing.join(', ')}`);
+        // Fetch all affected devices
+        const devices = await find({ serialNumber: { $in: affectedDevices }, deletedAt: null }).session(session);
+        const missing = affectedDevices.filter(sn => !devices.some(d => d.serialNumber === sn));
+        if (missing.length) throw createError(404, `Devices not found: ${missing.join(', ')}`);
 
         const baseEvent = {
           eventType:          actionKey,
@@ -220,12 +220,12 @@ const bulkLogLifecycleEvent = [
         if (actionKey === 'swapdeployment' && originalUpdate && spareCloneData) {
           const origSerial  = originalUpdate.serial;
           const spareSerial = spareCloneData.serial;
-          if (!affectedKiosks.includes(origSerial) || !affectedKiosks.includes(spareSerial)) {
+          if (!affectedDevices.includes(origSerial) || !affectedDevices.includes(spareSerial)) {
             throw createError(400, 'Invalid serials for swapdeployment');
           }
 
-          const origDevice  = kiosks.find(k => k.serialNumber === origSerial);
-          const spareDevice = kiosks.find(k => k.serialNumber === spareSerial);
+          const origDevice  = devices.find(d => d.serialNumber === origSerial);
+          const spareDevice = devices.find(d => d.serialNumber === spareSerial);
 
           if (origDevice) {
             await updateOne(
@@ -249,7 +249,7 @@ const bulkLogLifecycleEvent = [
           }
 
           if (contractIdObj) {
-            await _updateOne({ _id: contractIdObj }, { $addToSet: { kioskSerials: spareSerial } }).session(session);
+            await _updateOne({ _id: contractIdObj }, { $addToSet: { deviceSerials: spareSerial } }).session(session);
           }
         } else {
           const { status: newStatus, location: newLocation } = resolveEventOutcome(actionKey, associatedLocation);
@@ -257,7 +257,7 @@ const bulkLogLifecycleEvent = [
           const finalLocation = associatedLocation || newLocation;
 
           await updateMany(
-            { serialNumber: { $in: affectedKiosks }, deletedAt: null },
+            { serialNumber: { $in: affectedDevices }, deletedAt: null },
             {
               $push: { lifecycleEvents: { ...baseEvent, associatedLocation: finalLocation } },
               $set:  {
@@ -274,12 +274,12 @@ const bulkLogLifecycleEvent = [
           if (contractIdObj && (actionKey === 'deployment' || actionKey === 'swapdeployment')) {
             await _updateOne(
               { _id: contractIdObj },
-              { $addToSet: { kioskSerials: { $each: affectedKiosks } } }
+              { $addToSet: { deviceSerials: { $each: affectedDevices } } }
             ).session(session);
           }
         }
 
-        return find({ serialNumber: { $in: affectedKiosks }, deletedAt: null })
+        return find({ serialNumber: { $in: affectedDevices }, deletedAt: null })
           .populate('client linkedContractIds')
           .session(session);
       });
@@ -287,7 +287,7 @@ const bulkLogLifecycleEvent = [
       // Persist bulk operation record (non-fatal if it fails)
       try {
         await _create({
-          bulkOpId, action: actionKey, affectedKiosks, createdBy,
+          bulkOpId, action: actionKey, affectedDevices, createdBy,
           timestamp: new Date(timestamp), description, associatedLocation, relatedReference,
         });
       } catch (bulkOpErr) {
@@ -295,9 +295,9 @@ const bulkLogLifecycleEvent = [
       }
 
       res.json({
-        message:      `Bulk lifecycle event logged for ${updatedKiosks.length} kiosks`,
+        message:      `Bulk lifecycle event logged for ${updatedDevices.length} devices`,
         bulkOpId,
-        updatedKiosks: updatedKiosks.map(k => k.toObject()),
+        updatedDevices: updatedDevices.map(d => d.toObject()),
       });
     } catch (err) {
       next(err);

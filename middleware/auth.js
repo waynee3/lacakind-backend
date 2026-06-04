@@ -1,29 +1,24 @@
-const admin = require('firebase-admin');
+const jwt = require('jsonwebtoken');
 
-const authMiddleware = async (req, res, next) => {
-  console.log('Incoming Request Headers:', req.headers);
+const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret';
 
-  const authHeader = req.headers.authorization;
+const authMiddleware = (req, res, next) => {
+  const header = req.headers.authorization;
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.log('Missing or invalid Authorization header:', authHeader);
+  if (!header || !header.startsWith('Bearer ')) {
     return res.status(401).json({ message: 'Unauthorized: Missing or invalid token' });
   }
 
-  const token = authHeader.split('Bearer ')[1];
+  const token = header.split('Bearer ')[1];
 
   if (!token || token === 'null') {
-    console.log('Token is null or invalid:', token);
     return res.status(401).json({ message: 'Unauthorized: Token is null' });
   }
 
   try {
-    const decodedToken = await admin.auth().verifyIdToken(token);
-    console.log('Decoded Token:', decodedToken);
-    req.user = decodedToken;
+    req.user = jwt.verify(token, JWT_SECRET);
     next();
   } catch (error) {
-    console.error('Error verifying token:', error);
     return res.status(401).json({ message: 'Unauthorized: Invalid token', error: error.message });
   }
 };
