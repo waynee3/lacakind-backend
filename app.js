@@ -1,7 +1,7 @@
-require('dotenv').config();          // ← add this as line 1
+require('dotenv').config();        
 const express  = require('express');
 const mongoose = require('mongoose');
-const cors     = require('cors');    // ← add this
+const cors     = require('cors');    
 const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();

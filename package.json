@@ -1,7 +1,7 @@
 {
   "name": "lacakind-backend",
   "version": "1.0.0",
-  "description": "LacakInd kiosk tracking backend",
+  "description": "LacakInd device tracking backend",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
