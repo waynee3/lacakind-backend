@@ -1,7 +1,7 @@
 import { Router } from 'express';
 const router  = Router();
-import auth from '../middleware/auth';
-import { getContracts, addContract, updateDevicesForContract, getContractById, updateContract, terminateContract, bulkUploadDocuments } from '../controllers/contractController';
+import auth from '../middleware/auth.js';
+import { getContracts, addContract, updateDevicesForContract, getContractById, updateContract, terminateContract, bulkUploadDocuments } from '../controllers/contractController.js';
 
 router.get('/',                  auth, getContracts);
 router.post('/',                 auth, addContract);

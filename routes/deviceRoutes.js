@@ -1,7 +1,7 @@
 import { Router } from 'express';
 const router  = Router();
-import auth from '../middleware/auth';
-import { getBulkOperations, getAllBulkOperations, getDeviceBySerialNumber, updateDeviceBySerialNumber, bulkLogLifecycleEvent, getDevices, addDevice, updateDevice, deleteDevice } from '../controllers/deviceController';
+import auth from '../middleware/auth.js';
+import { getBulkOperations, getAllBulkOperations, getDeviceBySerialNumber, updateDeviceBySerialNumber, bulkLogLifecycleEvent, getDevices, addDevice, updateDevice, deleteDevice } from '../controllers/deviceController.js';
 
 // Specific paths before param routes
 router.get('/bulk-operations',     auth, getBulkOperations);

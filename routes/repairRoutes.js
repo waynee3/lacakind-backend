@@ -1,7 +1,7 @@
 import { Router } from 'express';
 const router  = Router();
-import auth from '../middleware/auth';
-import { createRepairIncident, getRepairIncidents, updateRepairIncident, deploySpareUnit } from '../controllers/repairController';
+import auth from '../middleware/auth.js';
+import { createRepairIncident, getRepairIncidents, updateRepairIncident, deploySpareUnit } from '../controllers/repairController.js';
 
 router.post('/',          auth, createRepairIncident);
 router.get('/',           auth, getRepairIncidents);
