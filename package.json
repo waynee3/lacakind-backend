@@ -2,6 +2,7 @@
   "name": "lacakind-backend",
   "version": "1.0.0",
   "description": "LacakInd device tracking backend",
+  "type": "module",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
