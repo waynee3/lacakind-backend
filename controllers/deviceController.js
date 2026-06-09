@@ -8,7 +8,6 @@ import { normaliseEventType, resolveEventOutcome } from '../config/eventRules.js
 import { withTransaction } from '../utils/withTransaction.js';
 import { createError } from '../middleware/errorHandler.js';
 
-// ─── POST /devices ────────────────────────────────────────────────────────────
 
 const addDevice = async (req, res, next) => {
   try {
@@ -16,7 +15,7 @@ const addDevice = async (req, res, next) => {
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const data = { ...req.body };
-    data.status          = data.status          || 'In Warehouse';
+    data.status          = data.status          || 'In Warehouse';    
     data.currentLocation = data.currentLocation?.trim() || 'Main Warehouse';
 
     const device = await Device.create(data);
@@ -25,8 +24,6 @@ const addDevice = async (req, res, next) => {
     next(err);
   }
 };
-
-// ─── GET /devices ─────────────────────────────────────────────────────────────
 
 const getDevices = async (req, res, next) => {
   try {
@@ -37,7 +34,7 @@ const getDevices = async (req, res, next) => {
     if (modelType)      query.modelType      = modelType;
     if (batchNumber)    query.batchNumber    = batchNumber;
     if (status)         query.status         = status;
-    if (location)       query.currentLocation = { $regex: location.trim(), $options: 'i' };
+    if (location)       query.currentLocation = { $regex: escapeRegex(location), $options: 'i' };
 
     if (clientFilter === 'No Client') {
       query.client = { $exists: false };
@@ -75,8 +72,6 @@ const getDevices = async (req, res, next) => {
   }
 };
 
-// ─── GET /devices/serial/:serialNumber ───────────────────────────────────────
-
 const getDeviceBySerialNumber = async (req, res, next) => {
   try {
     const device = await Device.findOne({ serialNumber: req.params.serialNumber, deletedAt: null }).populate('client');
@@ -87,7 +82,6 @@ const getDeviceBySerialNumber = async (req, res, next) => {
   }
 };
 
-// ─── PUT /devices/:id ────────────────────────────────────────────────────────
 
 const updateDevice = async (req, res, next) => {
   try {
@@ -102,7 +96,6 @@ const updateDevice = async (req, res, next) => {
   }
 };
 
-// ─── PUT /devices/serial/:serialNumber ───────────────────────────────────────
 
 const updateDeviceBySerialNumber = async (req, res, next) => {
   try {
@@ -111,7 +104,6 @@ const updateDeviceBySerialNumber = async (req, res, next) => {
 
     const updates = { ...req.body };
 
-    // Apply lifecycle-driven status/location if a new event is being pushed
     if (Array.isArray(updates.lifecycleEvents) && updates.lifecycleEvents.length) {
       const latestEvent = updates.lifecycleEvents.at(-1);
       const actionKey   = normaliseEventType(latestEvent.eventType);
@@ -134,7 +126,6 @@ const updateDeviceBySerialNumber = async (req, res, next) => {
   }
 };
 
-// ─── DELETE /devices/:id ─────────────────────────────────────────────────────
 
 const deleteDevice = async (req, res, next) => {
   try {
@@ -146,7 +137,6 @@ const deleteDevice = async (req, res, next) => {
   }
 };
 
-// ─── POST /devices/bulk-lifecycle ────────────────────────────────────────────
 
 const bulkLogLifecycleEvent = [
   async (req, res, next) => {
@@ -169,7 +159,6 @@ const bulkLogLifecycleEvent = [
       if (!actionKey) return next(createError(400, `Unknown action: ${action}`));
 
       const updatedDevices = await withTransaction(async (session) => {
-        // Resolve contract
         let contractIdObj = null;
         if (contractId && contractId !== 'undefined') {
           contractIdObj = Types.ObjectId.isValid(contractId)
@@ -178,7 +167,6 @@ const bulkLogLifecycleEvent = [
           if (!contractIdObj) throw createError(400, `Invalid contract: ${contractId}`);
         }
 
-        // Resolve client
         let clientIdObj = null;
         if (clientId && Types.ObjectId.isValid(clientId)) {
           clientIdObj = new Types.ObjectId(clientId);
@@ -186,7 +174,6 @@ const bulkLogLifecycleEvent = [
           clientIdObj = new Types.ObjectId(spareCloneData.client._id);
         }
 
-        // Resolve spare's linked contracts
         let linkedContractIds = [];
         if (spareCloneData?.linkedContractIds?.length) {
           for (const id of spareCloneData.linkedContractIds) {
@@ -202,7 +189,6 @@ const bulkLogLifecycleEvent = [
           linkedContractIds = [contractIdObj];
         }
 
-        // Fetch all affected devices
         const devices = await Device.find({ serialNumber: { $in: affectedDevices }, deletedAt: null }).session(session);
         const missing = affectedDevices.filter(sn => !devices.some(d => d.serialNumber === sn));
         if (missing.length) throw createError(404, `Devices not found: ${missing.join(', ')}`);
@@ -241,7 +227,7 @@ const bulkLogLifecycleEvent = [
             await Device.updateOne(
               { _id: spareDevice._id },
               {
-                $set:  { status: 'Deployed', currentLocation: spareLoc, client: clientIdObj, linkedContractIds, updatedBy: createdBy, updatedAt: new Date() },
+                $set:  { status: 'Spare Deployed', currentLocation: spareLoc, client: clientIdObj, linkedContractIds, updatedBy: createdBy, updatedAt: new Date() }, 
                 $push: { lifecycleEvents: { ...baseEvent, associatedLocation: spareLoc } },
               }
             ).session(session);
@@ -267,7 +253,8 @@ const bulkLogLifecycleEvent = [
                 currentLocation: finalLocation,
                 updatedBy:       createdBy,
                 updatedAt:       new Date(),
-                ...((actionKey === 'deployment' || actionKey === 'swapdeployment') && clientIdObj ? { client: clientIdObj } : { client: null }),
+                ...((actionKey === 'deployment' || actionKey === 'swapdeployment') && clientIdObj ?
+                  { client: clientIdObj } : { client: null }),
                 linkedContractIds,
               },
             }
@@ -286,7 +273,6 @@ const bulkLogLifecycleEvent = [
           .session(session);
       });
 
-      // Persist bulk operation record (non-fatal if it fails)
       try {
         await BulkOperation.create({
           bulkOpId, action: actionKey, affectedDevices, createdBy,
@@ -307,7 +293,6 @@ const bulkLogLifecycleEvent = [
   },
 ];
 
-// ─── GET /devices/bulk-operations ────────────────────────────────────────────
 
 const getBulkOperations = async (req, res, next) => {
   try {
@@ -331,8 +316,6 @@ const getBulkOperations = async (req, res, next) => {
     next(err);
   }
 };
-
-// ─── GET /devices/all-bulk-operations ────────────────────────────────────────
 
 const getAllBulkOperations = async (req, res, next) => {
   try {

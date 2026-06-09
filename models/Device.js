@@ -30,7 +30,7 @@ const deviceSchema = new Schema({
   supplier:          { type: String },
   cost:              { type: Number },
   warrantyExpiry:    { type: Date },
-  status:            { type: String, enum: DEVICE_STATUSES, default: 'InStock' },
+  status:            { type: String, enum: DEVICE_STATUSES, default: 'In Warehouse' },
   currentLocation:   { type: String },
   client:            { type: Schema.Types.ObjectId, ref: 'Client' },
   linkedContractIds: [{ type: Schema.Types.ObjectId, ref: 'Contract' }],

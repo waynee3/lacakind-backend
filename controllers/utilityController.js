@@ -2,15 +2,13 @@ import { readFileSync, writeFileSync, unlinkSync, existsSync, createReadStream }
 import { Types } from 'mongoose';
 import multer from 'multer';
 import csv from 'csv-parser';
-import Device from '../models/Device.js';
+import Device, { DEVICE_STATUSES } from '../models/Device.js';
 import Client from '../models/Client.js';
 import BulkOperation from '../models/BulkOperation.js';
 import { withTransaction } from '../utils/withTransaction.js';
 import { createError } from '../middleware/errorHandler.js';
 
 const upload = multer({ dest: 'uploads/' });
-
-const VALID_STATUSES = ['In Warehouse', 'Deployed', 'Under Repair', 'Repaired', 'Spare Deployed', 'Returned', 'Retired'];
 
 const HEADER_ALIASES = {
   serialNumber:    ['serialnumber', 'serial_number'],
@@ -31,10 +29,8 @@ function mapHeader(raw) {
   for (const [key, aliases] of Object.entries(HEADER_ALIASES)) {
     if (aliases.includes(normalised) || normalised === key.toLowerCase()) return key;
   }
-  return raw; // unmapped header — pass through
+  return raw; 
 }
-
-// ─── POST /utilities/bulk-import ─────────────────────────────────────────────
 
 const bulkImport = [
   upload.single('csvFile'),
@@ -44,17 +40,14 @@ const bulkImport = [
     const filePath = req.file.path;
 
     try {
-      // Pre-clean the CSV
       let content = readFileSync(filePath, 'utf8');
       content = content.replace(/;+(\r?\n|$)/g, '$1');
       content = content.split(/\r?\n/).filter(l => l.trim()).join('\n');
       content = content.replace(/ SN/g, '\nSN');
       writeFileSync(filePath, content);
 
-      // Parse CSV into memory first — safe to do async resolution after
       const { rows, parseErrors } = await parseCSV(filePath);
 
-      // Validate & enrich rows
       const devices    = [];
       const rowErrors  = [...parseErrors];
       let   rowNumber  = 0;
@@ -90,11 +83,11 @@ const bulkImport = [
           rowErrors.push(`Row ${rowNumber}: Invalid cost`); continue;
         }
 
-        let normalizedStatus = 'In Warehouse';
+        let normalizedStatus = 'In Warehouse';  
         if (row.status) {
           const trimmed = row.status.trim();
-          const match   = VALID_STATUSES.find(s => s.toLowerCase() === trimmed.toLowerCase());
-          if (!match) { rowErrors.push(`Row ${rowNumber}: Invalid status "${row.status}"`); continue; }
+          const match   = DEVICE_STATUSES.find(s => s.toLowerCase() === trimmed.toLowerCase());
+          if (!match) { rowErrors.push(`Row ${rowNumber}: Invalid status "${row.status}". Must be one of: ${DEVICE_STATUSES.join(', ')}`); continue; }
           normalizedStatus = match;
         }
 
@@ -126,14 +119,12 @@ const bulkImport = [
         return res.status(400).json({ errors: rowErrors });
       }
 
-      // Now safe to use a transaction — all async work is done
       const inserted = await withTransaction(async (session) => {
         return Device.insertMany(devices, { session });
       });
 
       unlinkSync(filePath);
 
-      // Save audit record
       try {
         await BulkOperation.create({
           bulkOpId:         `import-${Date.now()}`,
@@ -164,8 +155,6 @@ const bulkImport = [
   },
 ];
 
-// ─── POST /utilities/bulk-update ──────────────────────────────────────────────
-
 const bulkUpdate = async (req, res, next) => {
   try {
     const { deviceIds, updates } = req.body;
@@ -187,8 +176,6 @@ const bulkUpdate = async (req, res, next) => {
   }
 };
 
-// ─── GET /utilities/reports ───────────────────────────────────────────────────
-
 const generateReports = async (req, res, next) => {
   try {
     const { type, startDate, endDate } = req.query;
@@ -207,8 +194,6 @@ const generateReports = async (req, res, next) => {
     next(err);
   }
 };
-
-// ─── GET /utilities/bulk-operations ──────────────────────────────────────────
 
 const getBulkOperations = async (req, res, next) => {
   try {
@@ -229,8 +214,6 @@ const getBulkOperations = async (req, res, next) => {
     next(err);
   }
 };
-
-// ─── helpers ─────────────────────────────────────────────────────────────────
 
 function parseCSV(filePath) {
   return new Promise((resolve, reject) => {

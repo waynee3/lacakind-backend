@@ -5,8 +5,6 @@ import Client from '../models/Client.js';
 import { withTransaction } from '../utils/withTransaction.js';
 import { createError } from '../middleware/errorHandler.js';
 
-
-// GET /contracts
 const getContracts = async (req, res, next) => {
   try {
     const contracts = await Contract.find().populate('clientId');
@@ -16,7 +14,6 @@ const getContracts = async (req, res, next) => {
   }
 };
 
-// GET /contracts/:id
 const getContractById = async (req, res, next) => {
   try {
     const contract = await Contract.findById(req.params.id).populate('clientId');
@@ -27,7 +24,6 @@ const getContractById = async (req, res, next) => {
   }
 };
 
-// POST /contracts
 const addContract = async (req, res, next) => {
   try {
     const contract = await Contract.create({
@@ -36,9 +32,8 @@ const addContract = async (req, res, next) => {
       paymentStatus: req.body.paymentStatus || 'Not Paid',
     });
 
-    // Auto-link devices belonging to this client
     if (contract.clientId) {
-      const devices  = await Device.find({ client: contract.clientId, deletedAt: null });
+      const devices = await Device.find({ client: contract.clientId, deletedAt: null });
       const serials = devices.map(k => k.serialNumber);
       contract.deviceSerials = serials;
       await contract.save();
@@ -54,7 +49,6 @@ const addContract = async (req, res, next) => {
   }
 };
 
-// PUT /contracts/:id
 const updateContract = async (req, res, next) => {
   try {
     const existing = await Contract.findById(req.params.id);
@@ -84,7 +78,6 @@ const updateContract = async (req, res, next) => {
   }
 };
 
-// PUT /contracts/:id/terminate
 const terminateContract = async (req, res, next) => {
   try {
     const contract = await Contract.findById(req.params.id);
@@ -106,7 +99,6 @@ const terminateContract = async (req, res, next) => {
   }
 };
 
-// POST /contracts/:id/documents
 const bulkUploadDocuments = async (req, res, next) => {
   try {
     const contract = await Contract.findById(req.params.id);
@@ -125,14 +117,13 @@ const bulkUploadDocuments = async (req, res, next) => {
   }
 };
 
-// POST /contracts/update-devices
 const updateDevicesForContract = async (req, res, next) => {
   try {
     const { contractId, clientId, deviceSerials } = req.body;
 
     if (!Types.ObjectId.isValid(contractId)) return next(createError(400, `Invalid contractId: ${contractId}`));
     if (!Types.ObjectId.isValid(clientId))   return next(createError(400, `Invalid clientId: ${clientId}`));
-    if (!Array.isArray(deviceSerials))                  return next(createError(400, 'deviceSerials must be an array'));
+    if (!Array.isArray(deviceSerials))        return next(createError(400, 'deviceSerials must be an array'));
 
     await withTransaction(async (session) => {
       const [contract, client] = await Promise.all([
@@ -170,8 +161,6 @@ const updateDevicesForContract = async (req, res, next) => {
     next(err);
   }
 };
-
-// ─── helpers ────────────────────────────────────────────────────────────────
 
 function formatContract(contract) {
   const obj = contract.toObject ? contract.toObject() : contract;
