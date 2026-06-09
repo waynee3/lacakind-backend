@@ -1,6 +1,6 @@
 import { body, validationResult } from 'express-validator';
-import { findOne, findById } from '../models/Device';
-import { normaliseEventType, resolveEventOutcome } from '../config/eventRules';
+import Device from '../models/Device.js';
+import { normaliseEventType, resolveEventOutcome } from '../config/eventRules.js';
 import { createError } from '../middleware/errorHandler.js';
 
 // POST /logs/:serialNumber
@@ -14,7 +14,7 @@ const addLog = [
       const { eventType: rawEventType, description, associatedLocation, responsibleParty, relatedReference } = req.body;
       const serialNumber = req.params.serialNumber;
 
-      const device = await findOne({ serialNumber, deletedAt: null });
+      const device = await Device.findOne({ serialNumber, deletedAt: null });
       if (!device) return next(createError(404, `Device not found: ${serialNumber}`));
 
       const lastEvent = device.lifecycleEvents.at(-1);
@@ -57,7 +57,7 @@ const getLogs = async (req, res, next) => {
     const { deviceSerial } = req.query;
     if (!deviceSerial) return next(createError(400, 'deviceSerial query parameter is required'));
 
-    const device = await findOne({ serialNumber: deviceSerial, deletedAt: null });
+    const device = await Device.findOne({ serialNumber: deviceSerial, deletedAt: null });
     if (!device) return next(createError(404, 'Device not found'));
 
     res.json(device.lifecycleEvents);
@@ -74,7 +74,7 @@ const updateLog = async (req, res, next) => {
       return next(createError(400, 'deviceId and logIndex query parameters are required'));
     }
 
-    const device = await findById(deviceId);
+    const device = await Device.findById(deviceId);
     if (!device) return next(createError(404, 'Device not found'));
 
     const index = parseInt(logIndex, 10);
@@ -99,7 +99,7 @@ const deleteLog = async (req, res, next) => {
       return next(createError(400, 'deviceId and logIndex query parameters are required'));
     }
 
-    const device = await findById(deviceId);
+    const device = await Device.findById(deviceId);
     if (!device) return next(createError(404, 'Device not found'));
 
     const index = parseInt(logIndex, 10);
@@ -116,4 +116,4 @@ const deleteLog = async (req, res, next) => {
   }
 };
 
-export default { addLog, getLogs, updateLog, deleteLog };
+export { addLog, getLogs, updateLog, deleteLog };

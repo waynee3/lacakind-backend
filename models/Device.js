@@ -42,7 +42,6 @@ const deviceSchema = new Schema({
   },
 });
 
-deviceSchema.index({ serialNumber: 1 });
 deviceSchema.index({ status: 1 });
 deviceSchema.index({ currentLocation: 1 });
 deviceSchema.index({ modelType: 1 });

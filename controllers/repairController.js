@@ -1,13 +1,13 @@
-import { create, find, findOneAndUpdate } from '../models/RepairIncident';
-import { findOne } from '../models/Device';
+import RepairIncident from '../models/RepairIncident.js';
+import Device from '../models/Device.js';
 import { createError } from '../middleware/errorHandler.js';
 
 // POST /repairs
 const createRepairIncident = async (req, res, next) => {
   try {
-    const incident = await create(req.body);
+    const incident = await RepairIncident.create(req.body);
 
-    const device = await findOne({ serialNumber: incident.deviceSerial });
+    const device = await Device.findOne({ serialNumber: incident.deviceSerial });
     if (device) {
       device.repairIncidents.push(incident._id);
       await device.save();
@@ -22,7 +22,7 @@ const createRepairIncident = async (req, res, next) => {
 // GET /repairs
 const getRepairIncidents = async (req, res, next) => {
   try {
-    const incidents = await find();
+    const incidents = await RepairIncident.find();
     res.json(incidents);
   } catch (err) {
     next(err);
@@ -32,7 +32,7 @@ const getRepairIncidents = async (req, res, next) => {
 // PUT /repairs/:id
 const updateRepairIncident = async (req, res, next) => {
   try {
-    const incident = await findOneAndUpdate(
+    const incident = await RepairIncident.findOneAndUpdate(
       { id: req.params.id },
       req.body,
       { new: true, runValidators: true }
@@ -47,7 +47,7 @@ const updateRepairIncident = async (req, res, next) => {
 // POST /repairs/:id/spare
 const deploySpareUnit = async (req, res, next) => {
   try {
-    const incident = await findOneAndUpdate(
+    const incident = await RepairIncident.findOneAndUpdate(
       { id: req.params.id },
       req.body,
       { new: true, runValidators: true }
@@ -59,4 +59,4 @@ const deploySpareUnit = async (req, res, next) => {
   }
 };
 
-export default { createRepairIncident, getRepairIncidents, updateRepairIncident, deploySpareUnit };
+export { createRepairIncident, getRepairIncidents, updateRepairIncident, deploySpareUnit };

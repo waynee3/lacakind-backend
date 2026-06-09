@@ -2,10 +2,10 @@ import { readFileSync, writeFileSync, unlinkSync, existsSync, createReadStream }
 import { Types } from 'mongoose';
 import multer from 'multer';
 import csv from 'csv-parser';
-import { findOne, insertMany, updateMany, find } from '../models/Device';
-import { findOne as _findOne } from '../models/Client';
-import { create, find as _find, countDocuments } from '../models/BulkOperation';
-import { withTransaction } from '../utils/withTransaction';
+import Device from '../models/Device.js';
+import Client from '../models/Client.js';
+import BulkOperation from '../models/BulkOperation.js';
+import { withTransaction } from '../utils/withTransaction.js';
 import { createError } from '../middleware/errorHandler.js';
 
 const upload = multer({ dest: 'uploads/' });
@@ -65,12 +65,12 @@ const bulkImport = [
         const missing = ['serialNumber', 'modelType', 'currentLocation'].filter(f => !row[f]);
         if (missing.length) { rowErrors.push(`Row ${rowNumber}: Missing ${missing.join(', ')}`); continue; }
 
-        const duplicate = await findOne({ serialNumber: { $regex: `^${row.serialNumber}$`, $options: 'i' }, deletedAt: null });
+        const duplicate = await Device.findOne({ serialNumber: { $regex: `^${row.serialNumber}$`, $options: 'i' }, deletedAt: null });
         if (duplicate) { rowErrors.push(`Row ${rowNumber}: Serial ${row.serialNumber} already exists`); continue; }
 
         let clientId = null;
         if (row.client && row.client !== 'N/A') {
-          const client = await _findOne({ name: row.client });
+          const client = await Client.findOne({ name: row.client });
           if (!client) { rowErrors.push(`Row ${rowNumber}: Client "${row.client}" not found`); continue; }
           clientId = client._id;
         }
@@ -128,14 +128,14 @@ const bulkImport = [
 
       // Now safe to use a transaction — all async work is done
       const inserted = await withTransaction(async (session) => {
-        return insertMany(devices, { session });
+        return Device.insertMany(devices, { session });
       });
 
       unlinkSync(filePath);
 
       // Save audit record
       try {
-        await create({
+        await BulkOperation.create({
           bulkOpId:         `import-${Date.now()}`,
           action:           'bulk_import',
           affectedDevices:   inserted.map(d => d.serialNumber),
@@ -176,7 +176,7 @@ const bulkUpdate = async (req, res, next) => {
     const invalidIds = deviceIds.filter(id => !Types.ObjectId.isValid(id));
     if (invalidIds.length) return next(createError(400, `Invalid device IDs: ${invalidIds.join(', ')}`));
 
-    const result = await updateMany(
+    const result = await Device.updateMany(
       { _id: { $in: deviceIds } },
       { ...updates, updatedAt: new Date(), updatedBy: req.user.email }
     );
@@ -194,7 +194,7 @@ const generateReports = async (req, res, next) => {
     const { type, startDate, endDate } = req.query;
     if (type !== 'maintenance') return next(createError(400, `Unsupported report type: ${type}`));
 
-    const devices = await find({
+    const devices = await Device.find({
       'lifecycleEvents.eventType':   'maintenancestart',
       'lifecycleEvents.timestamp':   { $gte: new Date(startDate), $lte: new Date(endDate) },
     });
@@ -220,8 +220,8 @@ const getBulkOperations = async (req, res, next) => {
 
     const skip  = (parseInt(page) - 1) * parseInt(limit);
     const [ops, total] = await Promise.all([
-      _find(query).sort({ timestamp: -1 }).skip(skip).limit(parseInt(limit)).lean(),
-      countDocuments(query),
+      BulkOperation.find(query).sort({ timestamp: -1 }).skip(skip).limit(parseInt(limit)).lean(),
+      BulkOperation.countDocuments(query),
     ]);
 
     res.json({ bulkOperations: ops, total, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(total / parseInt(limit)) });
@@ -264,4 +264,4 @@ function parseCSV(filePath) {
   });
 }
 
-export default { bulkImport, bulkUpdate, generateReports, getBulkOperations };
+export { bulkImport, bulkUpdate, generateReports, getBulkOperations };

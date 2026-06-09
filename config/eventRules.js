@@ -83,4 +83,4 @@ function resolveEventOutcome(actionKey, inputLoc) {
   return { status: rule.status, location };
 }
 
-module.exports = { EVENT_TYPE_MAP, EVENT_RULES, normaliseEventType, resolveEventOutcome };
+export { EVENT_TYPE_MAP, EVENT_RULES, normaliseEventType, resolveEventOutcome };
