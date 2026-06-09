@@ -1,11 +1,3 @@
-/**
- * eventRules.js
- * Single source of truth for lifecycle event types, their status transitions,
- * and location rules. Previously duplicated across deviceController,
- * utilityController, and logController.
- */
-
-// Maps human-readable event names → internal action keys
 const EVENT_TYPE_MAP = {
   "Procurement & Arrival": "procurementarrival",
   "Warehouse Storage": "warehousestorage",
@@ -18,7 +10,6 @@ const EVENT_TYPE_MAP = {
   "Retirement/Decommission": "retirement",
 };
 
-// Maps action key → status/location rules
 const EVENT_RULES = {
   procurementarrival: {
     status: "In Warehouse",
@@ -37,15 +28,15 @@ const EVENT_RULES = {
     location: "Repair Center",
   },
   maintenancecomplete: {
-    status: "In Warehouse",
+    status: "Repaired",         
     locationFromInput: true,
   },
   swapdeployment: {
-    status: "Deployed",
+    status: "Spare Deployed",   
     locationFromInput: true,
   },
   return: {
-    status: "In Warehouse",
+    status: "Returned",       
     location: "Main Warehouse",
   },
   retirement: {
@@ -54,18 +45,11 @@ const EVENT_RULES = {
   },
 };
 
-/**
- * Normalise an incoming event type string to an action key.
- * Accepts both human-readable names and already-normalised keys.
- */
 function normaliseEventType(raw) {
   if (!raw) return null;
-  // Already a valid key
   if (EVENT_RULES[raw]) return raw;
-  // Human-readable name
   const mapped = EVENT_TYPE_MAP[raw];
   if (mapped) return mapped;
-  // Last-resort: strip spaces/slashes and lowercase
   const slug = raw.toLowerCase().replace(/[\s/&]+/g, "");
   return EVENT_RULES[slug] ? slug : null;
 }

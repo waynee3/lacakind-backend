@@ -10,6 +10,17 @@ const lifecycleEventSchema = new Schema({
   durationSinceLastEvent: { type: Number },
 });
 
+const DEVICE_STATUSES = [
+  'InStock',
+  'In Warehouse',
+  'Deployed',
+  'Under Repair',
+  'Repaired',
+  'Spare Deployed',
+  'Returned',
+  'Retired',
+];
+
 const deviceSchema = new Schema({
   serialNumber:      { type: String, required: true, unique: true },
   modelType:         { type: String },
@@ -19,7 +30,7 @@ const deviceSchema = new Schema({
   supplier:          { type: String },
   cost:              { type: Number },
   warrantyExpiry:    { type: Date },
-  status:            { type: String, default: 'InStock' },
+  status:            { type: String, enum: DEVICE_STATUSES, default: 'InStock' },
   currentLocation:   { type: String },
   client:            { type: Schema.Types.ObjectId, ref: 'Client' },
   linkedContractIds: [{ type: Schema.Types.ObjectId, ref: 'Contract' }],
@@ -46,6 +57,7 @@ deviceSchema.index({ status: 1 });
 deviceSchema.index({ currentLocation: 1 });
 deviceSchema.index({ modelType: 1 });
 deviceSchema.index({ batchNumber: 1 });
-deviceSchema.index({ deletedAt: 1 });  // speeds up deletedAt: null queries
+deviceSchema.index({ deletedAt: 1 });  
 
+export { DEVICE_STATUSES };
 export default model('Device', deviceSchema);
