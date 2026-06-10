@@ -24,12 +24,43 @@ const HEADER_ALIASES = {
   client:          ['client'],
 };
 
+const STATUS_ALIASES = {
+  'active':          'Deployed',
+  'inactive':        'In Warehouse',
+  'instock':         'InStock',
+  'in stock':        'InStock',
+  'inwarehouse':     'In Warehouse',
+  'warehouse':       'In Warehouse',
+  'underrepair':     'Under Repair',
+  'under_repair':    'Under Repair',
+  'in repair':       'Under Repair',
+  'repair':          'Under Repair',
+  'spardeployed':    'Spare Deployed',
+  'spare_deployed':  'Spare Deployed',
+};
+
+function resolveStatus(raw) {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+
+  if (DEVICE_STATUSES.includes(trimmed)) return trimmed;
+
+  const lowerTrimmed = trimmed.toLowerCase();
+  const exactCI = DEVICE_STATUSES.find(s => s.toLowerCase() === lowerTrimmed);
+  if (exactCI) return exactCI;
+
+  const alias = STATUS_ALIASES[lowerTrimmed];
+  if (alias) return alias;
+
+  return null;
+}
+
 function mapHeader(raw) {
   const normalised = raw.trim().toLowerCase().replace(/\s+/g, '');
   for (const [key, aliases] of Object.entries(HEADER_ALIASES)) {
     if (aliases.includes(normalised) || normalised === key.toLowerCase()) return key;
   }
-  return raw; 
+  return raw;
 }
 
 const bulkImport = [
@@ -61,34 +92,40 @@ const bulkImport = [
         const duplicate = await Device.findOne({ serialNumber: { $regex: `^${row.serialNumber}$`, $options: 'i' }, deletedAt: null });
         if (duplicate) { rowErrors.push(`Row ${rowNumber}: Serial ${row.serialNumber} already exists`); continue; }
 
-        let clientId = null;
-        if (row.client && row.client !== 'N/A') {
-          const client = await Client.findOne({ name: row.client });
-          if (!client) { rowErrors.push(`Row ${rowNumber}: Client "${row.client}" not found`); continue; }
-          clientId = client._id;
+        let normalizedStatus = 'In Warehouse'; 
+        if (row.status) {
+          const resolved = resolveStatus(row.status);
+          if (!resolved) {
+            rowErrors.push(
+              `Row ${rowNumber}: Invalid status "${row.status}". Must be one of: ${DEVICE_STATUSES.join(', ')} (or aliases: Active → Deployed, Inactive → In Warehouse)`
+            );
+            continue;
+          }
+          normalizedStatus = resolved;
         }
 
-        let parsedDates = {};
-        let dateError   = false;
+        const parsedDates = {};
         for (const field of ['purchaseDate', 'activationDate', 'warrantyExpiry']) {
           if (row[field]) {
             const d = new Date(row[field]);
-            if (isNaN(d.getTime())) { rowErrors.push(`Row ${rowNumber}: Invalid ${field}`); dateError = true; break; }
-            parsedDates[field] = d;
+            if (isNaN(d.getTime())) {
+              rowErrors.push(`Row ${rowNumber}: Invalid date for ${field}: "${row[field]}"`);
+            } else {
+              parsedDates[field] = d;
+            }
           }
         }
-        if (dateError) continue;
 
-        if (row.cost && isNaN(parseFloat(row.cost))) {
-          rowErrors.push(`Row ${rowNumber}: Invalid cost`); continue;
-        }
-
-        let normalizedStatus = 'In Warehouse';  
-        if (row.status) {
-          const trimmed = row.status.trim();
-          const match   = DEVICE_STATUSES.find(s => s.toLowerCase() === trimmed.toLowerCase());
-          if (!match) { rowErrors.push(`Row ${rowNumber}: Invalid status "${row.status}". Must be one of: ${DEVICE_STATUSES.join(', ')}`); continue; }
-          normalizedStatus = match;
+        let clientId = null;
+        if (row.client) {
+          const client = Types.ObjectId.isValid(row.client)
+            ? await Client.findById(row.client)
+            : await Client.findOne({ name: { $regex: `^${row.client}$`, $options: 'i' } });
+          if (!client) {
+            rowErrors.push(`Row ${rowNumber}: Client "${row.client}" not found`);
+            continue;
+          }
+          clientId = client._id;
         }
 
         devices.push({
@@ -127,26 +164,26 @@ const bulkImport = [
 
       try {
         await BulkOperation.create({
-          bulkOpId:         `import-${Date.now()}`,
-          action:           'bulk_import',
+          bulkOpId:          `import-${Date.now()}`,
+          action:            'bulk_import',
           affectedDevices:   inserted.map(d => d.serialNumber),
-          createdBy:        req.user?.email || 'anonymous',
-          timestamp:        new Date(),
-          totalRecords:     rows.length,
-          successfulRecords:inserted.length,
-          failedRecords:    rowErrors.length,
-          importErrors:     rowErrors,
+          createdBy:         req.user?.email || 'anonymous',
+          timestamp:         new Date(),
+          totalRecords:      rows.length,
+          successfulRecords: inserted.length,
+          failedRecords:     rowErrors.length,
+          importErrors:      rowErrors,
         });
       } catch (e) {
         console.error('Failed to save BulkOperation for import:', e.message);
       }
 
       res.json({
-        message:          'Bulk import completed',
-        totalRecords:     rows.length,
-        successfulRecords:inserted.length,
-        failedRecords:    rowErrors.length,
-        errors:           rowErrors.length ? rowErrors : null,
+        message:           'Bulk import completed',
+        totalRecords:      rows.length,
+        successfulRecords: inserted.length,
+        failedRecords:     rowErrors.length,
+        errors:            rowErrors.length ? rowErrors : null,
       });
     } catch (err) {
       if (existsSync(filePath)) unlinkSync(filePath);
@@ -182,8 +219,8 @@ const generateReports = async (req, res, next) => {
     if (type !== 'maintenance') return next(createError(400, `Unsupported report type: ${type}`));
 
     const devices = await Device.find({
-      'lifecycleEvents.eventType':   'maintenancestart',
-      'lifecycleEvents.timestamp':   { $gte: new Date(startDate), $lte: new Date(endDate) },
+      'lifecycleEvents.eventType': 'maintenancestart',
+      'lifecycleEvents.timestamp': { $gte: new Date(startDate), $lte: new Date(endDate) },
     });
 
     res.json(devices.map(d => ({
