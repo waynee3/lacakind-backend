@@ -1,29 +1,40 @@
 const escapeRegex = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 import axios from 'axios';
 import Client from '../models/Client.js';
+import Device from '../models/Device.js';
 import { createError } from '../middleware/errorHandler.js';
 
-// GET /clients
 const getClients = async (req, res, next) => {
   try {
-    const { search, location, limit } = req.query;
+    const {
+      clientName,
+      email,
+      phone,
+      location,
+      contactPerson,
+      search, 
+      page = 1,
+      limit,
+    } = req.query;
+
     const query = { owner: req.user.id };
 
-    if (search) query.name = { $regex: escapeRegex(search), $options: 'i' };
+    const nameTerm = clientName || search;
+    if (nameTerm)       query.name          = { $regex: escapeRegex(nameTerm), $options: 'i' };
+    if (email)          query.email         = { $regex: escapeRegex(email), $options: 'i' };
+    if (phone)          query.phone         = { $regex: escapeRegex(phone), $options: 'i' };
+    if (contactPerson)  query.contactPerson = { $regex: escapeRegex(contactPerson), $options: 'i' };
     if (location && location !== 'All') query.location = location;
 
-    const parsedLimit = parseInt(limit) || 0;
-    const clients = await Client.find(query)
-      .limit(parsedLimit || undefined)
-      .select('-__v');
+    let q = Client.find(query).select('-__v').sort({ createdAt: -1 });
 
-    const formatted = clients.map(c => ({
-      ...c.toObject(),
-      address:     `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.address)}`,
-      displayName: `${c.name} (${c.location})`,
-    }));
+    const limitNum = parseInt(limit);
+    if (limit && !isNaN(limitNum) && limitNum > 0) {
+      q = q.skip((parseInt(page) - 1) * limitNum).limit(limitNum);
+    }
 
-    res.json(formatted);
+    const clients = await q;
+    res.json(clients.map(c => c.toJSON()));
   } catch (err) {
     next(err);
   }
@@ -33,11 +44,55 @@ const getClients = async (req, res, next) => {
 const addClient = async (req, res, next) => {
   try {
     const { name, contactPerson, email, phone, address, location, notes } = req.body;
+    if (!name || !location) return next(createError(400, 'name and location are required'));
+
     const client = await Client.create({
       owner: req.user.id,
-      name, contactPerson, email, phone, address, location, notes,
+      name,
+      location,
+      contactPerson: contactPerson || '',
+      email:         email || '',
+      phone:         phone || '',
+      address:       address || '',
+      notes,
     });
     res.status(201).json(client);
+  } catch (err) {
+    if (err.code === 11000) return next(createError(409, 'A client with this name already exists'));
+    next(err);
+  }
+};
+
+// PUT /clients/:id
+const updateClient = async (req, res, next) => {
+  try {
+    const updates = { ...req.body };
+    delete updates.owner;
+    const client = await Client.findOneAndUpdate(
+      { owner: req.user.id, _id: req.params.id },
+      updates,
+      { new: true, runValidators: true },
+    );
+    if (!client) return next(createError(404, 'Client not found'));
+    res.json(client);
+  } catch (err) {
+    if (err.code === 11000) return next(createError(409, 'A client with this name already exists'));
+    next(err);
+  }
+};
+
+// DELETE /clients/:id
+const deleteClient = async (req, res, next) => {
+  try {
+    const owner = req.user.id;
+    const client = await Client.findOne({ owner, _id: req.params.id });
+    if (!client) return next(createError(404, 'Client not found'));
+
+    const inUse = await Device.findOne({ owner, client: client._id, deletedAt: null });
+    if (inUse) return next(createError(409, 'Client is referenced by one or more devices'));
+
+    await client.deleteOne();
+    res.json({ message: 'Client deleted' });
   } catch (err) {
     next(err);
   }
@@ -74,7 +129,7 @@ const getClientById = async (req, res, next) => {
   }
 };
 
-// GET /clients/geocode?address=...
+// GET /clients/geocode?address=...   (optional, only called explicitly)
 const getGeocodedAddress = async (req, res, next) => {
   try {
     const { address } = req.query;
@@ -94,4 +149,13 @@ const getGeocodedAddress = async (req, res, next) => {
   }
 };
 
-export { getClients, addClient, getClientNames, getUniqueLocations, getClientById, getGeocodedAddress };
+export {
+  getClients,
+  addClient,
+  updateClient,
+  deleteClient,
+  getClientNames,
+  getUniqueLocations,
+  getClientById,
+  getGeocodedAddress,
+};

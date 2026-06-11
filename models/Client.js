@@ -3,11 +3,11 @@ import { Schema, model } from 'mongoose';
 const clientSchema = new Schema({
   owner:         { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   name:          { type: String, required: true },
-  contactPerson: { type: String, required: true },
-  email:         { type: String, required: true },
-  phone:         { type: String, required: true },
-  address:       { type: String, required: true },
   location:      { type: String, required: true },
+  contactPerson: { type: String, default: '' },
+  email:         { type: String, default: '' },
+  phone:         { type: String, default: '' },
+  address:       { type: String, default: '' },
   notes:         { type: String },
   createdAt:     { type: Date, default: Date.now },
 }, {
@@ -21,5 +21,7 @@ const clientSchema = new Schema({
     },
   },
 });
+
+clientSchema.index({ owner: 1, name: 1 }, { unique: true });
 
 export default model('Client', clientSchema);
