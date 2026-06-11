@@ -7,7 +7,7 @@ import { createError } from '../middleware/errorHandler.js';
 
 const getContracts = async (req, res, next) => {
   try {
-    const contracts = await Contract.find().populate('clientId');
+    const contracts = await Contract.find({ owner: req.user.id }).populate('clientId');
     res.json(contracts.map(formatContract));
   } catch (err) {
     next(err);
@@ -16,7 +16,7 @@ const getContracts = async (req, res, next) => {
 
 const getContractById = async (req, res, next) => {
   try {
-    const contract = await Contract.findById(req.params.id).populate('clientId');
+    const contract = await Contract.findOne({ owner: req.user.id, _id: req.params.id }).populate('clientId');
     if (!contract) return next(createError(404, 'Contract not found'));
     res.json(formatContract(contract));
   } catch (err) {
@@ -26,20 +26,22 @@ const getContractById = async (req, res, next) => {
 
 const addContract = async (req, res, next) => {
   try {
+    const owner = req.user.id;
     const contract = await Contract.create({
       ...req.body,
+      owner,
       createdBy:     req.user.email,
       paymentStatus: req.body.paymentStatus || 'Not Paid',
     });
 
     if (contract.clientId) {
-      const devices = await Device.find({ client: contract.clientId, deletedAt: null });
-      const serials = devices.map(k => k.serialNumber);
+      const devices = await Device.find({ owner, client: contract.clientId, deletedAt: null });
+      const serials = devices.map(d => d.serialNumber);
       contract.deviceSerials = serials;
       await contract.save();
       await Device.updateMany(
-        { serialNumber: { $in: serials } },
-        { $addToSet: { linkedContractIds: contract._id } }
+        { owner, serialNumber: { $in: serials } },
+        { $addToSet: { linkedContractIds: contract._id } },
       );
     }
 
@@ -51,14 +53,18 @@ const addContract = async (req, res, next) => {
 
 const updateContract = async (req, res, next) => {
   try {
-    const existing = await Contract.findById(req.params.id);
+    const owner = req.user.id;
+    const existing = await Contract.findOne({ owner, _id: req.params.id });
     if (!existing) return next(createError(404, 'Contract not found'));
 
     const prevSerials = existing.deviceSerials || [];
-    const updated     = await Contract.findByIdAndUpdate(
-      req.params.id,
-      { $set: { ...req.body, paymentStatus: req.body.paymentStatus || existing.paymentStatus } },
-      { new: true, runValidators: true }
+    const updates = { ...req.body };
+    delete updates.owner;
+
+    const updated = await Contract.findOneAndUpdate(
+      { owner, _id: req.params.id },
+      { $set: { ...updates, paymentStatus: updates.paymentStatus || existing.paymentStatus } },
+      { new: true, runValidators: true },
     );
 
     const newSerials     = updated.deviceSerials || [];
@@ -66,10 +72,16 @@ const updateContract = async (req, res, next) => {
     const addedSerials   = newSerials.filter(s => !prevSerials.includes(s));
 
     if (removedSerials.length) {
-      await Device.updateMany({ serialNumber: { $in: removedSerials } }, { $pull: { linkedContractIds: existing._id } });
+      await Device.updateMany(
+        { owner, serialNumber: { $in: removedSerials } },
+        { $pull: { linkedContractIds: existing._id } },
+      );
     }
     if (addedSerials.length) {
-      await Device.updateMany({ serialNumber: { $in: addedSerials } }, { $addToSet: { linkedContractIds: existing._id } });
+      await Device.updateMany(
+        { owner, serialNumber: { $in: addedSerials } },
+        { $addToSet: { linkedContractIds: existing._id } },
+      );
     }
 
     res.json(updated);
@@ -80,7 +92,8 @@ const updateContract = async (req, res, next) => {
 
 const terminateContract = async (req, res, next) => {
   try {
-    const contract = await Contract.findById(req.params.id);
+    const owner = req.user.id;
+    const contract = await Contract.findOne({ owner, _id: req.params.id });
     if (!contract) return next(createError(404, 'Contract not found'));
 
     contract.status = 'Terminated';
@@ -88,8 +101,8 @@ const terminateContract = async (req, res, next) => {
 
     if (contract.deviceSerials.length) {
       await Device.updateMany(
-        { serialNumber: { $in: contract.deviceSerials } },
-        { $pull: { linkedContractIds: contract._id } }
+        { owner, serialNumber: { $in: contract.deviceSerials } },
+        { $pull: { linkedContractIds: contract._id } },
       );
     }
 
@@ -101,7 +114,7 @@ const terminateContract = async (req, res, next) => {
 
 const bulkUploadDocuments = async (req, res, next) => {
   try {
-    const contract = await Contract.findById(req.params.id);
+    const contract = await Contract.findOne({ owner: req.user.id, _id: req.params.id });
     if (!contract) return next(createError(404, 'Contract not found'));
 
     const { documentUrls } = req.body;
@@ -119,6 +132,7 @@ const bulkUploadDocuments = async (req, res, next) => {
 
 const updateDevicesForContract = async (req, res, next) => {
   try {
+    const owner = req.user.id;
     const { contractId, clientId, deviceSerials } = req.body;
 
     if (!Types.ObjectId.isValid(contractId)) return next(createError(400, `Invalid contractId: ${contractId}`));
@@ -127,14 +141,19 @@ const updateDevicesForContract = async (req, res, next) => {
 
     await withTransaction(async (session) => {
       const [contract, client] = await Promise.all([
-        Contract.findById(contractId).session(session),
-        Client.findById(clientId).session(session),
+        Contract.findOne({ owner, _id: contractId }).session(session),
+        Client.findOne({ owner, _id: clientId }).session(session),
       ]);
       if (!contract) throw createError(404, 'Contract not found');
       if (!client)   throw createError(404, 'Client not found');
 
       if (deviceSerials.length) {
-        const devices = await Device.find({ serialNumber: { $in: deviceSerials }, deletedAt: null }).session(session);
+        const devices = await Device.find({
+          owner,
+          serialNumber: { $in: deviceSerials },
+          deletedAt: null,
+        }).session(session);
+
         const missing = deviceSerials.filter(sn => !devices.some(d => d.serialNumber === sn));
         if (missing.length) throw createError(400, `Devices not found: ${missing.join(', ')}`);
 
@@ -144,16 +163,16 @@ const updateDevicesForContract = async (req, res, next) => {
         }
 
         await Device.updateMany(
-          { serialNumber: { $in: deviceSerials }, deletedAt: null },
+          { owner, serialNumber: { $in: deviceSerials }, deletedAt: null },
           {
             $set: { client: new Types.ObjectId(clientId), status: 'Deployed', updatedBy: 'system', updatedAt: new Date() },
             $addToSet: { linkedContractIds: new Types.ObjectId(contractId) },
           },
-          { session }
+          { session },
         );
       }
 
-      await Contract.updateOne({ _id: contractId }, { $set: { deviceSerials } }, { session });
+      await Contract.updateOne({ owner, _id: contractId }, { $set: { deviceSerials } }, { session });
     });
 
     res.json({ message: `Updated ${deviceSerials.length} devices for contract ${contractId}` });

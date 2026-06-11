@@ -25,34 +25,28 @@ const HEADER_ALIASES = {
 };
 
 const STATUS_ALIASES = {
-  'active':          'Deployed',
-  'inactive':        'In Warehouse',
-  'instock':         'InStock',
-  'in stock':        'InStock',
-  'inwarehouse':     'In Warehouse',
-  'warehouse':       'In Warehouse',
-  'underrepair':     'Under Repair',
-  'under_repair':    'Under Repair',
-  'in repair':       'Under Repair',
-  'repair':          'Under Repair',
-  'spardeployed':    'Spare Deployed',
-  'spare_deployed':  'Spare Deployed',
+  'active':         'Deployed',
+  'inactive':       'In Warehouse',
+  'instock':        'InStock',
+  'in stock':       'InStock',
+  'inwarehouse':    'In Warehouse',
+  'warehouse':      'In Warehouse',
+  'underrepair':    'Under Repair',
+  'under_repair':   'Under Repair',
+  'in repair':      'Under Repair',
+  'repair':         'Under Repair',
+  'sparedeployed':  'Spare Deployed',
+  'spare_deployed': 'Spare Deployed',
 };
 
 function resolveStatus(raw) {
   if (!raw) return null;
   const trimmed = raw.trim();
-
   if (DEVICE_STATUSES.includes(trimmed)) return trimmed;
-
   const lowerTrimmed = trimmed.toLowerCase();
   const exactCI = DEVICE_STATUSES.find(s => s.toLowerCase() === lowerTrimmed);
   if (exactCI) return exactCI;
-
-  const alias = STATUS_ALIASES[lowerTrimmed];
-  if (alias) return alias;
-
-  return null;
+  return STATUS_ALIASES[lowerTrimmed] ?? null;
 }
 
 function mapHeader(raw) {
@@ -68,6 +62,7 @@ const bulkImport = [
   async (req, res, next) => {
     if (!req.file) return next(createError(400, 'No file uploaded'));
 
+    const owner    = req.user.id;
     const filePath = req.file.path;
 
     try {
@@ -79,20 +74,31 @@ const bulkImport = [
 
       const { rows, parseErrors } = await parseCSV(filePath);
 
-      const devices    = [];
-      const rowErrors  = [...parseErrors];
-      let   rowNumber  = 0;
+      const devices   = [];
+      const rowErrors = [...parseErrors];
+      let rowNumber   = 0;
 
       for (const row of rows) {
         rowNumber++;
 
         const missing = ['serialNumber', 'modelType', 'currentLocation'].filter(f => !row[f]);
-        if (missing.length) { rowErrors.push(`Row ${rowNumber}: Missing ${missing.join(', ')}`); continue; }
+        if (missing.length) {
+          rowErrors.push(`Row ${rowNumber}: Missing ${missing.join(', ')}`);
+          continue;
+        }
 
-        const duplicate = await Device.findOne({ serialNumber: { $regex: `^${row.serialNumber}$`, $options: 'i' }, deletedAt: null });
-        if (duplicate) { rowErrors.push(`Row ${rowNumber}: Serial ${row.serialNumber} already exists`); continue; }
+        // Duplicate check is PER OWNER now
+        const duplicate = await Device.findOne({
+          owner,
+          serialNumber: { $regex: `^${row.serialNumber}$`, $options: 'i' },
+          deletedAt: null,
+        });
+        if (duplicate) {
+          rowErrors.push(`Row ${rowNumber}: Serial ${row.serialNumber} already exists`);
+          continue;
+        }
 
-        let normalizedStatus = 'In Warehouse'; 
+        let normalizedStatus = 'In Warehouse';
         if (row.status) {
           const resolved = resolveStatus(row.status);
           if (!resolved) {
@@ -118,9 +124,10 @@ const bulkImport = [
 
         let clientId = null;
         if (row.client) {
+          // Client lookup scoped to owner
           const client = Types.ObjectId.isValid(row.client)
-            ? await Client.findById(row.client)
-            : await Client.findOne({ name: { $regex: `^${row.client}$`, $options: 'i' } });
+            ? await Client.findOne({ owner, _id: row.client })
+            : await Client.findOne({ owner, name: { $regex: `^${row.client}$`, $options: 'i' } });
           if (!client) {
             rowErrors.push(`Row ${rowNumber}: Client "${row.client}" not found`);
             continue;
@@ -129,6 +136,7 @@ const bulkImport = [
         }
 
         devices.push({
+          owner,
           serialNumber:    row.serialNumber,
           modelType:       row.modelType,
           currentLocation: row.currentLocation,
@@ -138,8 +146,8 @@ const bulkImport = [
           supplier:        row.supplier    || 'Unknown',
           cost:            row.cost ? parseFloat(row.cost) : 0,
           ...parsedDates,
-          createdBy:  req.user?.email || 'N/A',
-          updatedBy:  req.user?.email || 'N/A',
+          createdBy: req.user?.email || 'N/A',
+          updatedBy: req.user?.email || 'N/A',
           lifecycleEvents: [{
             eventType:          'procurementarrival',
             timestamp:          new Date(),
@@ -164,6 +172,7 @@ const bulkImport = [
 
       try {
         await BulkOperation.create({
+          owner,
           bulkOpId:          `import-${Date.now()}`,
           action:            'bulk_import',
           affectedDevices:   inserted.map(d => d.serialNumber),
@@ -195,16 +204,21 @@ const bulkImport = [
 const bulkUpdate = async (req, res, next) => {
   try {
     const { deviceIds, updates } = req.body;
+    const owner = req.user.id;
 
-    if (!Array.isArray(deviceIds) || !deviceIds.length) return next(createError(400, 'deviceIds must be a non-empty array'));
-    if (!updates || !Object.keys(updates).length)       return next(createError(400, 'updates must be a non-empty object'));
+    if (!Array.isArray(deviceIds) || !deviceIds.length)
+      return next(createError(400, 'deviceIds must be a non-empty array'));
+    if (!updates || !Object.keys(updates).length)
+      return next(createError(400, 'updates must be a non-empty object'));
 
     const invalidIds = deviceIds.filter(id => !Types.ObjectId.isValid(id));
-    if (invalidIds.length) return next(createError(400, `Invalid device IDs: ${invalidIds.join(', ')}`));
+    if (invalidIds.length)
+      return next(createError(400, `Invalid device IDs: ${invalidIds.join(', ')}`));
 
+    delete updates.owner; // never let caller re-assign ownership
     const result = await Device.updateMany(
-      { _id: { $in: deviceIds } },
-      { ...updates, updatedAt: new Date(), updatedBy: req.user.email }
+      { owner, _id: { $in: deviceIds } },
+      { ...updates, updatedAt: new Date(), updatedBy: req.user.email },
     );
 
     res.json({ message: 'Bulk update successful', matchedCount: result.matchedCount, modifiedCount: result.modifiedCount });
@@ -216,9 +230,11 @@ const bulkUpdate = async (req, res, next) => {
 const generateReports = async (req, res, next) => {
   try {
     const { type, startDate, endDate } = req.query;
-    if (type !== 'maintenance') return next(createError(400, `Unsupported report type: ${type}`));
+    if (type !== 'maintenance')
+      return next(createError(400, `Unsupported report type: ${type}`));
 
     const devices = await Device.find({
+      owner: req.user.id,
       'lifecycleEvents.eventType': 'maintenancestart',
       'lifecycleEvents.timestamp': { $gte: new Date(startDate), $lte: new Date(endDate) },
     });
@@ -235,12 +251,13 @@ const generateReports = async (req, res, next) => {
 const getBulkOperations = async (req, res, next) => {
   try {
     const { page = 1, limit = 50, action, createdBy, startDate, endDate } = req.query;
-    const query = {};
+    const query = { owner: req.user.id };
+
     if (action)    query.action    = action;
     if (createdBy) query.createdBy = { $regex: createdBy, $options: 'i' };
     if (startDate && endDate) query.timestamp = { $gte: new Date(startDate), $lte: new Date(endDate) };
 
-    const skip  = (parseInt(page) - 1) * parseInt(limit);
+    const skip = (parseInt(page) - 1) * parseInt(limit);
     const [ops, total] = await Promise.all([
       BulkOperation.find(query).sort({ timestamp: -1 }).skip(skip).limit(parseInt(limit)).lean(),
       BulkOperation.countDocuments(query),

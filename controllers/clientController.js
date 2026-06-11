@@ -7,7 +7,7 @@ import { createError } from '../middleware/errorHandler.js';
 const getClients = async (req, res, next) => {
   try {
     const { search, location, limit } = req.query;
-    const query = {};
+    const query = { owner: req.user.id };
 
     if (search) query.name = { $regex: escapeRegex(search), $options: 'i' };
     if (location && location !== 'All') query.location = location;
@@ -33,7 +33,10 @@ const getClients = async (req, res, next) => {
 const addClient = async (req, res, next) => {
   try {
     const { name, contactPerson, email, phone, address, location, notes } = req.body;
-    const client = await Client.create({ name, contactPerson, email, phone, address, location, notes });
+    const client = await Client.create({
+      owner: req.user.id,
+      name, contactPerson, email, phone, address, location, notes,
+    });
     res.status(201).json(client);
   } catch (err) {
     next(err);
@@ -43,7 +46,7 @@ const addClient = async (req, res, next) => {
 // GET /clients/client-names
 const getClientNames = async (req, res, next) => {
   try {
-    const clients = await Client.find({}, 'name');
+    const clients = await Client.find({ owner: req.user.id }, 'name');
     res.json(clients.map(c => ({ value: c.name, name: c.name })));
   } catch (err) {
     next(err);
@@ -53,7 +56,7 @@ const getClientNames = async (req, res, next) => {
 // GET /clients/unique-locations
 const getUniqueLocations = async (req, res, next) => {
   try {
-    const locations = await Client.distinct('location');
+    const locations = await Client.distinct('location', { owner: req.user.id });
     res.json(['All', ...locations]);
   } catch (err) {
     next(err);
@@ -63,7 +66,7 @@ const getUniqueLocations = async (req, res, next) => {
 // GET /clients/:id
 const getClientById = async (req, res, next) => {
   try {
-    const client = await Client.findById(req.params.id);
+    const client = await Client.findOne({ owner: req.user.id, _id: req.params.id });
     if (!client) return next(createError(404, 'Client not found'));
     res.json(client);
   } catch (err) {
@@ -77,7 +80,7 @@ const getGeocodedAddress = async (req, res, next) => {
     const { address } = req.query;
     if (!address) return next(createError(400, 'Address is required'));
 
-    const apiKey  = process.env.GOOGLE_MAPS_API_KEY;
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
     const { data } = await axios.get(
       `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`
     );
