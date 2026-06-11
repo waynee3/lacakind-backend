@@ -1,10 +1,5 @@
 import { Schema, model } from 'mongoose';
 
-/**
- * BulkOperation — records every bulk action for auditing.
- * The `details` sub-document captures before/after state so the UI
- * can display a meaningful history without re-querying devices.
- */
 const clientSnapshotSchema = new Schema({
   id:       String,
   name:     String,
@@ -22,7 +17,9 @@ const deviceChangeSchema = new Schema({
 }, { _id: false });
 
 const bulkOperationSchema = new Schema({
-  bulkOpId: { type: String, required: true, unique: true },
+  owner:    { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+
+  bulkOpId: { type: String, required: true },
   action:   { type: String, required: true },
 
   affectedDevices: [{ type: String, required: true }],
@@ -34,14 +31,12 @@ const bulkOperationSchema = new Schema({
   associatedLocation: { type: String, default: '' },
   relatedReference:   { type: String, default: '' },
 
-  // Summary counts (populated by bulk-import operations)
   totalRecords:      { type: Number },
   successfulRecords: { type: Number },
   failedRecords:     { type: Number },
   importErrors:      [{ type: String }],
 
   details: {
-    // swap-deployment specifics
     originalDevice: {
       serialNumber:    String,
       previousStatus:  String,
@@ -58,14 +53,14 @@ const bulkOperationSchema = new Schema({
       newLocation:     String,
       newClient:       clientSnapshotSchema,
     },
-    // deployment specifics
     client:   clientSnapshotSchema,
     contract: { id: String, contractId: String, clientName: String },
-    // general change arrays
     statusChanges:   [deviceChangeSchema],
     locationChanges: [deviceChangeSchema],
     clientChanges:   [deviceChangeSchema],
   },
 }, { timestamps: true });
+
+bulkOperationSchema.index({ owner: 1, bulkOpId: 1 }, { unique: true });
 
 export default model('BulkOperation', bulkOperationSchema);

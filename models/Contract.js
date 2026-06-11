@@ -1,8 +1,9 @@
 import { Schema, model } from 'mongoose';
 
 const contractSchema = new Schema({
-  contractId:  { type: String, required: true, unique: true },
-  contractRef: { type: String, required: true, unique: true },
+  owner:       { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  contractId:  { type: String, required: true },
+  contractRef: { type: String, required: true },
   clientId:    { type: Schema.Types.ObjectId, ref: 'Client', required: true },
   clientName:  { type: String },
   contractType:{ type: String, enum: ['Rental', 'Lease', 'Sale'], required: true },
@@ -30,12 +31,15 @@ const contractSchema = new Schema({
       ret.id = ret._id.toString();
       delete ret._id;
       delete ret.__v;
+      delete ret.owner;
       return ret;
     },
   },
 });
 
-// Keep contractRef in sync with contractId
+contractSchema.index({ owner: 1, contractId: 1 }, { unique: true });
+contractSchema.index({ owner: 1, contractRef: 1 }, { unique: true });
+
 contractSchema.pre('save', function (next) {
   if (this.isModified('contractId') || !this.contractRef) {
     this.contractRef = this.contractId;

@@ -16,7 +16,13 @@ const authMiddleware = (req, res, next) => {
   }
 
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET); 
+    if (!decoded.id) {
+      return res
+        .status(401)
+        .json({ message: 'Unauthorized: token missing user id, please log in again' });
+    }
+    req.user = decoded;
     next();
   } catch (error) {
     return res.status(401).json({ message: 'Unauthorized: Invalid token', error: error.message });

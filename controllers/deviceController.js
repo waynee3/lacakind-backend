@@ -1,6 +1,6 @@
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 import { Types } from "mongoose";
-import { body, validationResult } from "express-validator";
+import { validationResult } from "express-validator";
 import Device from "../models/Device.js";
 import Contract from "../models/Contract.js";
 import BulkOperation from "../models/BulkOperation.js";
@@ -13,7 +13,7 @@ const addDevice = async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const data = { ...req.body };
+    const data = { ...req.body, owner: req.user.id };
     data.status = data.status || "In Warehouse";
     data.currentLocation = data.currentLocation?.trim() || "Main Warehouse";
 
@@ -37,7 +37,8 @@ const getDevices = async (req, res, next) => {
       page = 1,
       limit,
     } = req.query;
-    const query = { deletedAt: null };
+
+    const query = { owner: req.user.id, deletedAt: null };
 
     if (serialNumber) query.serialNumber = { $regex: escapeRegex(serialNumber), $options: "i" };
     if (modelType) query.modelType = modelType;
@@ -55,7 +56,7 @@ const getDevices = async (req, res, next) => {
     if (contractFilter === "No Contract") {
       query.linkedContractIds = { $exists: true, $eq: [] };
     } else if (contractFilter) {
-      const contract = await Contract.findOne({ contractId: contractFilter });
+      const contract = await Contract.findOne({ owner: req.user.id, contractId: contractFilter });
       if (!contract) return res.json([]);
       query.linkedContractIds = contract._id;
     }
@@ -85,9 +86,13 @@ const getDevices = async (req, res, next) => {
 
 const getDeviceBySerialNumber = async (req, res, next) => {
   try {
-    const device = await Device.findOne({ serialNumber: req.params.serialNumber, deletedAt: null }).populate("client");
+    const device = await Device.findOne({
+      owner: req.user.id,
+      serialNumber: req.params.serialNumber,
+      deletedAt: null,
+    }).populate("client");
     if (!device) return next(createError(404, "Device not found"));
-    res.json({ ...device.toObject(), currentLocation: device.currentLocation?.trim() });
+    res.json({ ...device.toJSON(), currentLocation: device.currentLocation?.trim() });
   } catch (err) {
     next(err);
   }
@@ -96,11 +101,14 @@ const getDeviceBySerialNumber = async (req, res, next) => {
 const updateDevice = async (req, res, next) => {
   try {
     const updates = { ...req.body };
+    delete updates.owner; 
     if (updates.currentLocation) updates.currentLocation = updates.currentLocation.trim();
 
-    const device = await Device.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true }).populate(
-      "client",
-    );
+    const device = await Device.findOneAndUpdate(
+      { owner: req.user.id, _id: req.params.id },
+      updates,
+      { new: true, runValidators: true },
+    ).populate("client");
     if (!device) return next(createError(404, "Device not found"));
     res.json(device);
   } catch (err) {
@@ -110,10 +118,15 @@ const updateDevice = async (req, res, next) => {
 
 const updateDeviceBySerialNumber = async (req, res, next) => {
   try {
-    const device = await Device.findOne({ serialNumber: req.params.serialNumber, deletedAt: null });
+    const device = await Device.findOne({
+      owner: req.user.id,
+      serialNumber: req.params.serialNumber,
+      deletedAt: null,
+    });
     if (!device) return next(createError(404, "Device not found"));
 
     const updates = { ...req.body };
+    delete updates.owner;
 
     if (Array.isArray(updates.lifecycleEvents) && updates.lifecycleEvents.length) {
       const latestEvent = updates.lifecycleEvents.at(-1);
@@ -128,7 +141,7 @@ const updateDeviceBySerialNumber = async (req, res, next) => {
     if (updates.currentLocation) updates.currentLocation = updates.currentLocation.trim();
     Object.assign(device, updates);
     device.updatedAt = new Date();
-    device.updatedBy = req.user?.email || req.user?.uid || "unknown";
+    device.updatedBy = req.user?.email || "unknown";
 
     await device.save();
     res.json(device);
@@ -139,7 +152,10 @@ const updateDeviceBySerialNumber = async (req, res, next) => {
 
 const deleteDevice = async (req, res, next) => {
   try {
-    const device = await Device.findByIdAndUpdate(req.params.id, { deletedAt: new Date() });
+    const device = await Device.findOneAndUpdate(
+      { owner: req.user.id, _id: req.params.id },
+      { deletedAt: new Date() },
+    );
     if (!device) return next(createError(404, "Device not found"));
     res.json({ message: "Device soft-deleted" });
   } catch (err) {
@@ -178,81 +194,52 @@ const bulkLogLifecycleEvent = [
       const actionKey = normaliseEventType(action);
       if (!actionKey) return next(createError(400, `Unknown action: ${action}`));
 
+      const owner = req.user.id;
+
       const updatedDevices = await withTransaction(async (session) => {
         let contractIdObj = null;
         if (contractId && contractId !== "undefined") {
-          contractIdObj = Types.ObjectId.isValid(contractId)
-            ? new Types.ObjectId(contractId)
-            : (await Contract.findOne({ contractId }).session(session))?._id;
-          if (!contractIdObj) throw createError(400, `Invalid contract: ${contractId}`);
+          contractIdObj = Types.ObjectId.isValid(contractId) ? new Types.ObjectId(contractId) : null;
         }
-
         let clientIdObj = null;
-        if (clientId && Types.ObjectId.isValid(clientId)) {
-          clientIdObj = new Types.ObjectId(clientId);
-        } else if (spareCloneData?.client?._id && Types.ObjectId.isValid(spareCloneData.client._id)) {
-          clientIdObj = new Types.ObjectId(spareCloneData.client._id);
+        if (clientId && clientId !== "undefined") {
+          clientIdObj = Types.ObjectId.isValid(clientId) ? new Types.ObjectId(clientId) : null;
         }
-
-        let linkedContractIds = [];
-        if (spareCloneData?.linkedContractIds?.length) {
-          for (const id of spareCloneData.linkedContractIds) {
-            if (Types.ObjectId.isValid(id)) {
-              const c = await Contract.findById(id).session(session);
-              if (c) linkedContractIds.push(c._id);
-            } else {
-              const c = await Contract.findOne({ contractId: id }).session(session);
-              if (c) linkedContractIds.push(c._id);
-            }
-          }
-        } else if (contractIdObj) {
-          linkedContractIds = [contractIdObj];
-        }
-
-        const devices = await Device.find({ serialNumber: { $in: affectedDevices }, deletedAt: null }).session(session);
-        const missing = affectedDevices.filter((sn) => !devices.some((d) => d.serialNumber === sn));
-        if (missing.length) throw createError(404, `Devices not found: ${missing.join(", ")}`);
+        const linkedContractIds = contractIdObj ? [contractIdObj] : [];
 
         const baseEvent = {
           eventType: actionKey,
-          responsibleParty: createdBy,
           timestamp: new Date(timestamp),
-          description: description || "",
-          relatedReference: relatedReference || "",
-          associatedLocation: associatedLocation || "",
+          description,
+          responsibleParty: createdBy,
+          relatedReference,
         };
 
-        if (actionKey === "swapdeployment" && originalUpdate && spareCloneData) {
-          const origSerial = originalUpdate.serial;
-          const spareSerial = spareCloneData.serial;
-          if (!affectedDevices.includes(origSerial) || !affectedDevices.includes(spareSerial)) {
-            throw createError(400, "Invalid serials for swapdeployment");
-          }
+        if (actionKey === "swapdeployment" && spareCloneData) {
+          const spareSerial = spareCloneData.serialNumber;
+          const spareLoc = associatedLocation || spareCloneData.currentLocation || "Client Site";
 
-          const origDevice = devices.find((d) => d.serialNumber === origSerial);
-          const spareDevice = devices.find((d) => d.serialNumber === spareSerial);
-
-          if (origDevice) {
-            await Device.updateOne(
-              { _id: origDevice._id },
+          if (originalUpdate) {
+            await Device.updateMany(
+              { owner, serialNumber: { $in: affectedDevices }, deletedAt: null },
               {
+                $push: { lifecycleEvents: { ...baseEvent, associatedLocation: spareLoc } },
                 $set: {
-                  status: "Under Repair",
-                  currentLocation: "Repair Center",
-                  client: null,
-                  linkedContractIds: [],
+                  status: originalUpdate.status || "Returned",
+                  currentLocation: originalUpdate.currentLocation || "Main Warehouse",
                   updatedBy: createdBy,
                   updatedAt: new Date(),
                 },
-                $push: { lifecycleEvents: { ...baseEvent, associatedLocation: "Repair Center" } },
               },
             ).session(session);
           }
 
+          const spareDevice = await Device.findOne({ owner, serialNumber: spareSerial, deletedAt: null }).session(
+            session,
+          );
           if (spareDevice) {
-            const spareLoc = spareCloneData.currentLocation || associatedLocation || "Client Site";
             await Device.updateOne(
-              { _id: spareDevice._id },
+              { owner, _id: spareDevice._id },
               {
                 $set: {
                   status: "Spare Deployed",
@@ -268,9 +255,10 @@ const bulkLogLifecycleEvent = [
           }
 
           if (contractIdObj) {
-            await Contract.updateOne({ _id: contractIdObj }, { $addToSet: { deviceSerials: spareSerial } }).session(
-              session,
-            );
+            await Contract.updateOne(
+              { owner, _id: contractIdObj },
+              { $addToSet: { deviceSerials: spareSerial } },
+            ).session(session);
           }
         } else {
           const { status: newStatus, location: newLocation } = resolveEventOutcome(actionKey, associatedLocation);
@@ -278,7 +266,7 @@ const bulkLogLifecycleEvent = [
           const finalLocation = associatedLocation || newLocation;
 
           await Device.updateMany(
-            { serialNumber: { $in: affectedDevices }, deletedAt: null },
+            { owner, serialNumber: { $in: affectedDevices }, deletedAt: null },
             {
               $push: { lifecycleEvents: { ...baseEvent, associatedLocation: finalLocation } },
               $set: {
@@ -296,19 +284,20 @@ const bulkLogLifecycleEvent = [
 
           if (contractIdObj && (actionKey === "deployment" || actionKey === "swapdeployment")) {
             await Contract.updateOne(
-              { _id: contractIdObj },
+              { owner, _id: contractIdObj },
               { $addToSet: { deviceSerials: { $each: affectedDevices } } },
             ).session(session);
           }
         }
 
-        return Device.find({ serialNumber: { $in: affectedDevices }, deletedAt: null })
+        return Device.find({ owner, serialNumber: { $in: affectedDevices }, deletedAt: null })
           .populate("client linkedContractIds")
           .session(session);
       });
 
       try {
         await BulkOperation.create({
+          owner,
           bulkOpId,
           action: actionKey,
           affectedDevices,
@@ -340,13 +329,19 @@ const bulkDeleteDevice = async (req, res, next) => {
       return next(createError(400, "serialNumbers must be a non-empty array"));
     }
 
+    const owner = req.user.id;
+
     const deletedDevices = await withTransaction(async (session) => {
-      const devices = await Device.find({ serialNumber: { $in: serialNumbers }, deletedAt: null }).session(session);
+      const devices = await Device.find({
+        owner,
+        serialNumber: { $in: serialNumbers },
+        deletedAt: null,
+      }).session(session);
       const missing = serialNumbers.filter((sn) => !devices.some((d) => d.serialNumber === sn));
       if (missing.length) throw createError(404, `Devices not found: ${missing.join(", ")}`);
 
       await Device.updateMany(
-        { serialNumber: { $in: serialNumbers }, deletedAt: null },
+        { owner, serialNumber: { $in: serialNumbers }, deletedAt: null },
         { $set: { deletedAt: new Date() } },
       ).session(session);
 
@@ -362,7 +357,7 @@ const bulkDeleteDevice = async (req, res, next) => {
 const getBulkOperations = async (req, res, next) => {
   try {
     const { page = 1, limit = 50, action, createdBy, startDate, endDate } = req.query;
-    const query = {};
+    const query = { owner: req.user.id };
 
     if (action) query.action = action;
     if (createdBy) query.createdBy = { $regex: createdBy, $options: "i" };
@@ -390,7 +385,7 @@ const getBulkOperations = async (req, res, next) => {
 
 const getAllBulkOperations = async (req, res, next) => {
   try {
-    const ops = await BulkOperation.find({}).sort({ timestamp: -1 }).lean();
+    const ops = await BulkOperation.find({ owner: req.user.id }).sort({ timestamp: -1 }).lean();
     res.json({ bulkOperations: ops, total: ops.length });
   } catch (err) {
     next(err);

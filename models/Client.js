@@ -1,6 +1,7 @@
 import { Schema, model } from 'mongoose';
 
 const clientSchema = new Schema({
+  owner:         { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   name:          { type: String, required: true },
   contactPerson: { type: String, required: true },
   email:         { type: String, required: true },
@@ -15,6 +16,7 @@ const clientSchema = new Schema({
       ret.id = ret._id.toString();
       delete ret._id;
       delete ret.__v;
+      delete ret.owner;
       return ret;
     },
   },

@@ -22,7 +22,9 @@ const DEVICE_STATUSES = [
 ];
 
 const deviceSchema = new Schema({
-  serialNumber:      { type: String, required: true, unique: true },
+  owner:             { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+
+  serialNumber:      { type: String, required: true },
   modelType:         { type: String },
   purchaseDate:      { type: Date },
   activationDate:    { type: Date },
@@ -46,6 +48,7 @@ const deviceSchema = new Schema({
       ret.id = ret._id.toString();
       delete ret._id;
       delete ret.__v;
+      delete ret.owner;
       if (ret.client)            ret.client = ret.client.toString();
       if (ret.linkedContractIds) ret.linkedContractIds = ret.linkedContractIds.map(id => id.toString());
       return ret;
@@ -53,11 +56,13 @@ const deviceSchema = new Schema({
   },
 });
 
-deviceSchema.index({ status: 1 });
-deviceSchema.index({ currentLocation: 1 });
-deviceSchema.index({ modelType: 1 });
-deviceSchema.index({ batchNumber: 1 });
-deviceSchema.index({ deletedAt: 1 });  
+deviceSchema.index({ owner: 1, serialNumber: 1 }, { unique: true });
+
+deviceSchema.index({ owner: 1, status: 1 });
+deviceSchema.index({ owner: 1, currentLocation: 1 });
+deviceSchema.index({ owner: 1, modelType: 1 });
+deviceSchema.index({ owner: 1, batchNumber: 1 });
+deviceSchema.index({ owner: 1, deletedAt: 1 });
 
 export { DEVICE_STATUSES };
 export default model('Device', deviceSchema);
