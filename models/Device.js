@@ -49,8 +49,25 @@ const deviceSchema = new Schema({
       delete ret._id;
       delete ret.__v;
       delete ret.owner;
-      if (ret.client)            ret.client = ret.client.toString();
-      if (ret.linkedContractIds) ret.linkedContractIds = ret.linkedContractIds.map(id => id.toString());
+
+      if (ret.client) {
+        if (typeof ret.client === 'object' && ret.client._id) {
+          ret.client = {
+            id:       ret.client._id.toString(),
+            name:     ret.client.name,
+            location: ret.client.location,
+          };
+        } else {
+          ret.client = ret.client.toString();
+        }
+      }
+
+      if (ret.linkedContractIds) {
+        ret.linkedContractIds = ret.linkedContractIds.map(id =>
+          typeof id === 'object' && id._id ? id._id.toString() : id.toString()
+        );
+      }
+
       return ret;
     },
   },
