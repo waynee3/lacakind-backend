@@ -5,9 +5,55 @@ import Client from '../models/Client.js';
 import { withTransaction } from '../utils/withTransaction.js';
 import { createError } from '../middleware/errorHandler.js';
 
+async function generateContractRef(owner, maxAttempts = 10) {
+  for (let i = 0; i < maxAttempts; i++) {
+    const digits = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+    const ref    = `LCKID-${digits}`;
+    const exists = await Contract.exists({ owner, contractRef: ref });
+    if (!exists) return ref;
+  }
+  return `LCKID-${Date.now().toString().slice(-5)}`;
+}
+
 const getContracts = async (req, res, next) => {
   try {
-    const contracts = await Contract.find({ owner: req.user.id }).populate('clientId');
+    const {
+      contractId,
+      clientName,
+      contractType,
+      startDate,
+      endDate,
+      status,
+      paymentStatus,
+      page  = 1,
+      limit = 20,
+    } = req.query;
+
+    const query = { owner: req.user.id };
+    if (contractId)   query.contractId   = { $regex: contractId,   $options: 'i' };
+    if (contractType) query.contractType = contractType;
+    if (status)       query.status       = status;
+    if (paymentStatus) query.paymentStatus = paymentStatus;
+    if (startDate && endDate) {
+      query.startDate = { $gte: new Date(startDate) };
+      query.endDate   = { $lte: new Date(endDate) };
+    }
+    if (clientName) {
+      const client = await Client.findOne({
+        owner: req.user.id,
+        name: { $regex: clientName, $options: 'i' },
+      });
+      if (client) query.clientId = client._id;
+      else return res.json([]);
+    }
+
+    const skip      = (parseInt(page) - 1) * parseInt(limit);
+    const contracts = await Contract.find(query)
+      .populate('clientId')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
     res.json(contracts.map(formatContract));
   } catch (err) {
     next(err);
@@ -16,7 +62,10 @@ const getContracts = async (req, res, next) => {
 
 const getContractById = async (req, res, next) => {
   try {
-    const contract = await Contract.findOne({ owner: req.user.id, _id: req.params.id }).populate('clientId');
+    const contract = await Contract.findOne({
+      owner: req.user.id,
+      _id: req.params.id,
+    }).populate('clientId');
     if (!contract) return next(createError(404, 'Contract not found'));
     res.json(formatContract(contract));
   } catch (err) {
@@ -27,43 +76,65 @@ const getContractById = async (req, res, next) => {
 const addContract = async (req, res, next) => {
   try {
     const owner = req.user.id;
+
+    const contractRef = await generateContractRef(owner);
+
+    const { contractRef: _ignored, ...rest } = req.body;
+
     const contract = await Contract.create({
-      ...req.body,
+      ...rest,
       owner,
+      contractRef,
       createdBy:     req.user.email,
       paymentStatus: req.body.paymentStatus || 'Not Paid',
     });
 
     if (contract.clientId) {
-      const devices = await Device.find({ owner, client: contract.clientId, deletedAt: null });
+      const devices = await Device.find({
+        owner,
+        client: contract.clientId,
+        deletedAt: null,
+      });
       const serials = devices.map(d => d.serialNumber);
-      contract.deviceSerials = serials;
-      await contract.save();
-      await Device.updateMany(
-        { owner, serialNumber: { $in: serials } },
-        { $addToSet: { linkedContractIds: contract._id } },
-      );
+      if (serials.length) {
+        contract.deviceSerials = serials;
+        await contract.save();
+        await Device.updateMany(
+          { owner, serialNumber: { $in: serials } },
+          { $addToSet: { linkedContractIds: contract._id } },
+        );
+      }
     }
 
     res.status(201).json(contract);
   } catch (err) {
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyValue || {})[0] || 'field';
+      return next(createError(409, `Duplicate value for ${field}`));
+    }
     next(err);
   }
 };
 
 const updateContract = async (req, res, next) => {
   try {
-    const owner = req.user.id;
+    const owner    = req.user.id;
     const existing = await Contract.findOne({ owner, _id: req.params.id });
     if (!existing) return next(createError(404, 'Contract not found'));
 
     const prevSerials = existing.deviceSerials || [];
-    const updates = { ...req.body };
+    const updates     = { ...req.body };
     delete updates.owner;
+    delete updates.contractRef;
 
     const updated = await Contract.findOneAndUpdate(
       { owner, _id: req.params.id },
-      { $set: { ...updates, paymentStatus: updates.paymentStatus || existing.paymentStatus } },
+      {
+        $set: {
+          ...updates,
+          paymentStatus: updates.paymentStatus || existing.paymentStatus,
+        },
+      },
       { new: true, runValidators: true },
     );
 
@@ -92,7 +163,7 @@ const updateContract = async (req, res, next) => {
 
 const terminateContract = async (req, res, next) => {
   try {
-    const owner = req.user.id;
+    const owner    = req.user.id;
     const contract = await Contract.findOne({ owner, _id: req.params.id });
     if (!contract) return next(createError(404, 'Contract not found'));
 
@@ -114,7 +185,10 @@ const terminateContract = async (req, res, next) => {
 
 const bulkUploadDocuments = async (req, res, next) => {
   try {
-    const contract = await Contract.findOne({ owner: req.user.id, _id: req.params.id });
+    const contract = await Contract.findOne({
+      owner: req.user.id,
+      _id: req.params.id,
+    });
     if (!contract) return next(createError(404, 'Contract not found'));
 
     const { documentUrls } = req.body;
@@ -135,9 +209,12 @@ const updateDevicesForContract = async (req, res, next) => {
     const owner = req.user.id;
     const { contractId, clientId, deviceSerials } = req.body;
 
-    if (!Types.ObjectId.isValid(contractId)) return next(createError(400, `Invalid contractId: ${contractId}`));
-    if (!Types.ObjectId.isValid(clientId))   return next(createError(400, `Invalid clientId: ${clientId}`));
-    if (!Array.isArray(deviceSerials))        return next(createError(400, 'deviceSerials must be an array'));
+    if (!Types.ObjectId.isValid(contractId))
+      return next(createError(400, `Invalid contractId: ${contractId}`));
+    if (!Types.ObjectId.isValid(clientId))
+      return next(createError(400, `Invalid clientId: ${clientId}`));
+    if (!Array.isArray(deviceSerials))
+      return next(createError(400, 'deviceSerials must be an array'));
 
     await withTransaction(async (session) => {
       const [contract, client] = await Promise.all([
@@ -154,28 +231,47 @@ const updateDevicesForContract = async (req, res, next) => {
           deletedAt: null,
         }).session(session);
 
-        const missing = deviceSerials.filter(sn => !devices.some(d => d.serialNumber === sn));
-        if (missing.length) throw createError(400, `Devices not found: ${missing.join(', ')}`);
+        const missing = deviceSerials.filter(
+          sn => !devices.some(d => d.serialNumber === sn),
+        );
+        if (missing.length)
+          throw createError(400, `Devices not found: ${missing.join(', ')}`);
 
-        const wrongClient = devices.filter(d => d.client && d.client.toString() !== clientId);
+        const wrongClient = devices.filter(
+          d => d.client && d.client.toString() !== clientId,
+        );
         if (wrongClient.length) {
-          throw createError(400, `Devices belong to a different client: ${wrongClient.map(d => d.serialNumber).join(', ')}`);
+          throw createError(
+            400,
+            `Devices belong to a different client: ${wrongClient.map(d => d.serialNumber).join(', ')}`,
+          );
         }
 
         await Device.updateMany(
           { owner, serialNumber: { $in: deviceSerials }, deletedAt: null },
           {
-            $set: { client: new Types.ObjectId(clientId), status: 'Deployed', updatedBy: 'system', updatedAt: new Date() },
+            $set: {
+              client:    new Types.ObjectId(clientId),
+              status:    'Deployed',
+              updatedBy: 'system',
+              updatedAt: new Date(),
+            },
             $addToSet: { linkedContractIds: new Types.ObjectId(contractId) },
           },
           { session },
         );
       }
 
-      await Contract.updateOne({ owner, _id: contractId }, { $set: { deviceSerials } }, { session });
+      await Contract.updateOne(
+        { owner, _id: contractId },
+        { $set: { deviceSerials } },
+        { session },
+      );
     });
 
-    res.json({ message: `Updated ${deviceSerials.length} devices for contract ${contractId}` });
+    res.json({
+      message: `Updated ${deviceSerials.length} devices for contract ${contractId}`,
+    });
   } catch (err) {
     next(err);
   }
@@ -185,10 +281,21 @@ function formatContract(contract) {
   const obj = contract.toObject ? contract.toObject() : contract;
   return {
     ...obj,
-    clientId:      obj.clientId ? (obj.clientId.toObject ? obj.clientId.toObject() : obj.clientId) : null,
-    clientName:    obj.clientId?.name ?? obj.clientName,
+    id:           obj._id?.toString() ?? obj.id,
+    clientId:     obj.clientId
+      ? (obj.clientId.toObject ? obj.clientId.toObject() : obj.clientId)
+      : null,
+    clientName:   obj.clientId?.name ?? obj.clientName,
     paymentStatus: obj.paymentStatus,
   };
 }
 
-export { getContracts, getContractById, addContract, updateContract, terminateContract, bulkUploadDocuments, updateDevicesForContract };
+export {
+  getContracts,
+  getContractById,
+  addContract,
+  updateContract,
+  terminateContract,
+  bulkUploadDocuments,
+  updateDevicesForContract,
+};

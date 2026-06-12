@@ -12,6 +12,7 @@ import repairRoutes   from './routes/repairRoutes.js';
 import deviceRoutes   from './routes/deviceRoutes.js';
 import logRoutes      from './routes/logRoutes.js';
 import utilityRoutes  from './routes/utilityRoutes.js';
+import dashboardRouter from './routes/dashboardRoutes.js';
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use('/api/repairs',   repairRoutes);
 app.use('/api/devices',   deviceRoutes);
 app.use('/api/logs',      logRoutes);
 app.use('/api/utilities', utilityRoutes);
+app.use('/api/dashboard', dashboardRouter);
 
 app.use(errorHandler);
 

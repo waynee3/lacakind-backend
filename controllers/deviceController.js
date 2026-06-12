@@ -356,21 +356,73 @@ const bulkDeleteDevice = async (req, res, next) => {
 
 const getBulkOperations = async (req, res, next) => {
   try {
-    const { page = 1, limit = 50, action, createdBy, startDate, endDate } = req.query;
-    const query = { owner: req.user.id };
-
-    if (action) query.action = action;
-    if (createdBy) query.createdBy = { $regex: createdBy, $options: "i" };
+    const {
+      page = 1,
+      limit = 20,
+      action,
+      createdBy,
+      startDate,
+      endDate,
+      serialNumber,
+      clientName,
+    } = req.query;
+ 
+    const owner = req.user.id;
+    const query = { owner };
+ 
+    if (action)    query.action    = action;
+    if (createdBy) query.createdBy = { $regex: createdBy, $options: 'i' };
     if (startDate && endDate) {
       query.timestamp = { $gte: new Date(startDate), $lte: new Date(endDate) };
     }
-
+ 
+    if (serialNumber) {
+      query.affectedDevices = {
+        $elemMatch: { $regex: escapeRegex(serialNumber), $options: 'i' },
+      };
+    }
+ 
+    if (clientName) {
+      const client = await Client.findOne({
+        owner,
+        name: { $regex: escapeRegex(clientName), $options: 'i' },
+      });
+      if (client) {
+        const clientDevices = await Device.find(
+          { owner, client: client._id, deletedAt: null },
+          'serialNumber',
+        );
+        const serials = clientDevices.map((d) => d.serialNumber);
+        if (query.affectedDevices) {
+          query.$and = [
+            { affectedDevices: query.affectedDevices },
+            { affectedDevices: { $in: serials } },
+          ];
+          delete query.affectedDevices;
+        } else {
+          query.affectedDevices = { $in: serials };
+        }
+      } else {
+        return res.json({
+          bulkOperations: [],
+          total: 0,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: 0,
+        });
+      }
+    }
+ 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [ops, total] = await Promise.all([
-      BulkOperation.find(query).sort({ timestamp: -1 }).skip(skip).limit(parseInt(limit)).lean(),
+      BulkOperation.find(query)
+        .sort({ timestamp: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
       BulkOperation.countDocuments(query),
     ]);
-
+ 
     res.json({
       bulkOperations: ops,
       total,
